@@ -5,6 +5,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/ui";
+import { requireAuth } from "@/shared/auth/dal";
 
 const stats = [
   { label: "ใบรับซื้อวันนี้", value: "—", hint: "เชื่อมข้อมูลใน Phase 3" },
@@ -13,16 +14,9 @@ const stats = [
   { label: "เงินสดในลิ้นชัก", value: "—", hint: "เชื่อมข้อมูลใน Phase 3" },
 ] as const;
 
-const phaseStatus = [
-  { done: true, text: "โครงสร้างโฟลเดอร์ src/modules และ src/shared" },
-  { done: true, text: "Layout ของ route group (app) และ (auth)" },
-  { done: true, text: "Sidebar (desktop) + Bottom Nav (mobile)" },
-  { done: true, text: "Shared UI: Button, Card, Input, Label" },
-  { done: false, text: "Auth จริง / RBAC / Branch scope (Phase 1)" },
-  { done: false, text: "Module: purchase-ticket, stock, production (Phase 3+)" },
-];
+export default async function DashboardPage() {
+  const me = await requireAuth();
 
-export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-1">
@@ -30,7 +24,8 @@ export default function DashboardPage() {
           แดชบอร์ด
         </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          โครงสร้าง Foundation พร้อมแล้ว — ขั้นถัดไปคือ Auth และ RBAC
+          ยินดีต้อนรับ {me.displayName}
+          {me.isSuperAdmin ? " (Super Admin)" : ""}
         </p>
       </header>
 
@@ -57,30 +52,56 @@ export default function DashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>สถานะโปรเจกต์</CardTitle>
-          <CardDescription>Phase 0 — Foundation</CardDescription>
+          <CardTitle>ข้อมูลบัญชีของคุณ</CardTitle>
+          <CardDescription>
+            สิทธิ์และสาขาที่บัญชีของคุณเข้าถึงได้
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <ul className="flex flex-col gap-2 text-sm">
-            {phaseStatus.map((s) => (
-              <li
-                key={s.text}
-                className="flex items-start gap-2 text-zinc-700 dark:text-zinc-300"
-              >
-                <span
-                  aria-hidden="true"
-                  className={
-                    s.done
-                      ? "mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-xs font-bold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400"
-                      : "mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs font-bold text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-                  }
-                >
-                  {s.done ? "✓" : "·"}
-                </span>
-                <span>{s.text}</span>
-              </li>
-            ))}
-          </ul>
+          <dl className="grid gap-4 text-sm sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <dt className="text-zinc-500 dark:text-zinc-400">อีเมล</dt>
+              <dd className="font-medium text-zinc-900 dark:text-zinc-100">
+                {me.email}
+              </dd>
+            </div>
+            <div className="flex flex-col gap-1">
+              <dt className="text-zinc-500 dark:text-zinc-400">
+                บทบาท (Roles)
+              </dt>
+              <dd className="font-medium text-zinc-900 dark:text-zinc-100">
+                {me.roles.length > 0
+                  ? me.roles.map((r) => r.name).join(", ")
+                  : me.isSuperAdmin
+                    ? "Super Admin (ทุกบทบาท)"
+                    : "ยังไม่ได้กำหนดบทบาท"}
+              </dd>
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <dt className="text-zinc-500 dark:text-zinc-400">
+                สาขาที่เข้าถึงได้
+              </dt>
+              <dd className="font-medium text-zinc-900 dark:text-zinc-100">
+                {me.isSuperAdmin
+                  ? "ทุกสาขา (Super Admin)"
+                  : me.branches.length > 0
+                    ? me.branches
+                        .map((b) => `${b.code} – ${b.name}`)
+                        .join(", ")
+                    : "ยังไม่ได้ผูกสาขา"}
+              </dd>
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <dt className="text-zinc-500 dark:text-zinc-400">
+                จำนวนสิทธิ์ที่ได้รับ
+              </dt>
+              <dd className="font-medium text-zinc-900 dark:text-zinc-100">
+                {me.isSuperAdmin
+                  ? "ทั้งหมด (Super Admin)"
+                  : `${me.permissions.size} permission`}
+              </dd>
+            </div>
+          </dl>
         </CardContent>
       </Card>
     </div>

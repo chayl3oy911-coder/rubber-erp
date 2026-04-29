@@ -1,4 +1,15 @@
-export function Topbar() {
+import { logoutAction } from "@/shared/auth/actions";
+import { currentUser } from "@/shared/auth/dal";
+
+export async function Topbar() {
+  const me = await currentUser();
+  const initial = me?.displayName?.charAt(0).toUpperCase() ?? "?";
+  const subtitle = me
+    ? me.isSuperAdmin
+      ? "Super Admin"
+      : (me.roles[0]?.name ?? "ยังไม่ได้กำหนดบทบาท")
+    : "ยังไม่เข้าสู่ระบบ";
+
   return (
     <header
       className={[
@@ -20,18 +31,26 @@ export function Topbar() {
       <div className="flex items-center gap-3">
         <div className="hidden text-right md:block">
           <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            ผู้ใช้ทดลอง
+            {me?.displayName ?? "ผู้ใช้"}
           </div>
           <div className="text-xs text-zinc-500 dark:text-zinc-400">
-            Phase 0 · ยังไม่เชื่อม Auth
+            {subtitle}
           </div>
         </div>
         <div
           aria-hidden="true"
           className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
         >
-          ผ
+          {initial}
         </div>
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            ออกจากระบบ
+          </button>
+        </form>
       </div>
     </header>
   );
