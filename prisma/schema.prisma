@@ -1,13 +1,179 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Rubber ERP — Prisma schema
+// ───────────────────────────────────────────────────────────────────────────
+// Conventions (Phase 0 · Step 2 · Database Foundation):
+//   - id           : uuid via gen_random_uuid(), native Postgres @db.Uuid
+//   - createdAt    : @default(now()) on every model
+//   - updatedAt    : @updatedAt on every model EXCEPT AuditLog (immutable)
+//   - Soft delete  : isActive Boolean — never hard delete from app layer
+//   - Branch scope : branchId on every business row tied to a สาขา
+//   - Supabase Auth: AppUser.supabaseUserId === auth.users.id (logical link,
+//                    not an FK because auth lives in a different schema)
+//
+// Out of scope here: Purchase / Stock / Production / Sales / Cash modules,
+// runtime auth/RBAC enforcement, RLS. Those land in later phases.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../src/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─── Identity ────────────────────────────────────────────────────────────────
+
+model AppUser {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  supabaseUserId String   @unique @db.Uuid
+  email          String   @unique
+  displayName    String
+  phone          String?
+  isSuperAdmin   Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  userRoles    UserRole[]
+  userBranches UserBranch[]
+  auditLogs    AuditLog[]   @relation("AuditActor")
+}
+
+// ─── RBAC ────────────────────────────────────────────────────────────────────
+
+model Role {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  isSystem    Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String   @unique
+  name        String
+  description String?
+  module      String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @db.Uuid
+  roleId       String   @db.Uuid
+  assignedById String?  @db.Uuid
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  roleId       String   @db.Uuid
+  permissionId String   @db.Uuid
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([roleId])
+  @@index([permissionId])
+}
+
+// ─── Branch & Branch Access ──────────────────────────────────────────────────
+
+model Branch {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String   @unique
+  name      String
+  address   String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userBranches UserBranch[]
+  farmers      Farmer[]
+  auditLogs    AuditLog[]
+}
+
+model UserBranch {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @db.Uuid
+  branchId  String   @db.Uuid
+  isPrimary Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user   AppUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+  @@index([userId])
+  @@index([branchId])
+}
+
+// ─── Master Data ─────────────────────────────────────────────────────────────
+
+model Farmer {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId      String   @db.Uuid
+  code          String
+  fullName      String
+  phone         String?
+  nationalId    String?
+  bankName      String?
+  bankAccountNo String?
+  notes         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, code])
+  @@index([branchId])
+}
+
+// ─── Audit ───────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actorId    String   @db.Uuid
+  branchId   String?  @db.Uuid
+  entityType String
+  entityId   String   @db.Uuid
+  action     String
+  before     Json?
+  after      Json?
+  metadata   Json?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  actor  AppUser @relation("AuditActor", fields: [actorId], references: [id], onDelete: Restrict)
+  branch Branch? @relation(fields: [branchId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@index([branchId, createdAt])
 }
