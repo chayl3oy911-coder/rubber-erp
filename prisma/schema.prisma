@@ -36,6 +36,10 @@ model AppUser {
   userRoles    UserRole[]
   userBranches UserBranch[]
   auditLogs    AuditLog[]   @relation("AuditActor")
+
+  purchaseTicketsCreated   PurchaseTicket[] @relation("PurchaseCreator")
+  purchaseTicketsApproved  PurchaseTicket[] @relation("PurchaseApprover")
+  purchaseTicketsCancelled PurchaseTicket[] @relation("PurchaseCanceller")
 }
 
 // ─── RBAC ────────────────────────────────────────────────────────────────────
@@ -110,9 +114,10 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userBranches UserBranch[]
-  farmers      Farmer[]
-  auditLogs    AuditLog[]
+  userBranches    UserBranch[]
+  farmers         Farmer[]
+  purchaseTickets PurchaseTicket[]
+  auditLogs       AuditLog[]
 }
 
 model UserBranch {
@@ -148,10 +153,78 @@ model Farmer {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  branch Branch @relation(fields: [branchId], references: [id])
+  branch          Branch           @relation(fields: [branchId], references: [id])
+  purchaseTickets PurchaseTicket[]
 
   @@unique([branchId, code])
   @@index([branchId])
+}
+
+// ─── Purchase ────────────────────────────────────────────────────────────────
+//
+// Receives raw rubber from farmers. ticketNo is auto-generated per-branch
+// (PUR000001, PUR000002, …) inside a transaction with retry; uniqueness
+// enforced by `@@unique([branchId, ticketNo])`.
+//
+// Money/weight columns use Decimal for exactness. netWeight and totalAmount
+// are persisted (server-computed) so list queries and future Stock/Reports
+// can sort/aggregate without recomputing — and so audit snapshots reflect
+// the exact values at the time of write.
+//
+// Status transitions are strict-forward: DRAFT → WAITING_QC → WAITING_APPROVAL
+// → APPROVED. CANCELLED is a terminal state reachable from any non-terminal
+// state. APPROVED is locked against field edits per business rule.
+//
+// Document/PDF fields (company, logo, tax id) intentionally NOT here — those
+// belong to a future Setting/Company table read at print time.
+
+model PurchaseTicket {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId      String   @db.Uuid
+  farmerId      String   @db.Uuid
+  ticketNo      String
+
+  rubberType    String
+
+  grossWeight   Decimal  @db.Decimal(12, 2)
+  tareWeight    Decimal  @db.Decimal(12, 2) @default(0)
+  netWeight     Decimal  @db.Decimal(12, 2)
+  pricePerKg    Decimal  @db.Decimal(12, 4)
+  totalAmount   Decimal  @db.Decimal(14, 2)
+
+  // ─── Withholding tax (เก็บลง DB ทุกใบเพื่อ trace ภาษีย้อนหลังได้) ──────────
+  // pricePerKg ยังคง 4 ตำแหน่งเพราะตลาดยางจริงใช้ทศนิยม 4 ตำแหน่ง.
+  // weight/total/tax/netPayable ใช้ 2 ตำแหน่งทั้งหมด.
+  // service จะ recompute และเขียนทับเสมอ — `@default(0)` มีไว้กัน migration
+  // แตกถ้ามี row เก่าโผล่มา (ไม่ควรเกิดในรอบนี้เพราะตารางว่าง).
+  withholdingTaxPercent Decimal @db.Decimal(5, 2)  @default(0)
+  withholdingTaxAmount  Decimal @db.Decimal(14, 2) @default(0)
+  netPayableAmount      Decimal @db.Decimal(14, 2) @default(0)
+
+  status        String
+  note          String?
+
+  approvedAt    DateTime?
+  approvedById  String?  @db.Uuid
+  cancelledAt   DateTime?
+  cancelledById String?  @db.Uuid
+  cancelReason  String?
+
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdById   String   @db.Uuid
+
+  branch      Branch   @relation(fields: [branchId], references: [id])
+  farmer      Farmer   @relation(fields: [farmerId], references: [id])
+  createdBy   AppUser  @relation("PurchaseCreator", fields: [createdById], references: [id])
+  approvedBy  AppUser? @relation("PurchaseApprover", fields: [approvedById], references: [id])
+  cancelledBy AppUser? @relation("PurchaseCanceller", fields: [cancelledById], references: [id])
+
+  @@unique([branchId, ticketNo])
+  @@index([branchId, status])
+  @@index([branchId, createdAt])
+  @@index([farmerId])
 }
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

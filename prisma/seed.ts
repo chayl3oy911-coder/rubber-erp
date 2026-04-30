@@ -152,6 +152,37 @@ const PERMISSIONS: ReadonlyArray<PermissionSeed> = [
     description: "ปิดใช้งานเกษตรกรแบบ soft delete",
   },
   {
+    code: "purchase.read",
+    module: "purchase",
+    name: "ดูใบรับซื้อ",
+    description: "ดูข้อมูลใบรับซื้อยาง",
+  },
+  {
+    code: "purchase.create",
+    module: "purchase",
+    name: "สร้างใบรับซื้อ",
+    description: "สร้างใบรับซื้อยางใหม่ (สถานะเริ่มต้น DRAFT)",
+  },
+  {
+    code: "purchase.update",
+    module: "purchase",
+    name: "แก้ไขใบรับซื้อ",
+    description:
+      "แก้ไขใบรับซื้อในสถานะที่อนุญาต และเลื่อนสถานะ DRAFT/WAITING_QC/WAITING_APPROVAL",
+  },
+  {
+    code: "purchase.approve",
+    module: "purchase",
+    name: "อนุมัติใบรับซื้อ",
+    description: "อนุมัติใบรับซื้อ (WAITING_APPROVAL → APPROVED)",
+  },
+  {
+    code: "purchase.cancel",
+    module: "purchase",
+    name: "ยกเลิกใบรับซื้อ",
+    description: "ยกเลิกใบรับซื้อ (สถานะที่ยังไม่ CANCELLED)",
+  },
+  {
     code: "user.manage",
     module: "user",
     name: "จัดการผู้ใช้",
@@ -172,6 +203,57 @@ const PERMISSIONS: ReadonlyArray<PermissionSeed> = [
 ];
 
 const SUPER_ADMIN_CODE = "super_admin";
+
+/**
+ * Role → permission grants for non-super-admin roles.
+ *
+ * `super_admin` is auto-linked to every permission elsewhere; this map only
+ * covers other roles and the entries here represent the *baseline* — the
+ * minimum set every role must have. Seed runs are additive: re-running this
+ * script will re-create any missing links, but it will NEVER remove links
+ * that were added manually through an admin UI.
+ *
+ * To revoke a baseline grant, remove it from this map AND clear the existing
+ * row in `RolePermission` (the seed will not undo links on its own).
+ *
+ * Currently scoped to the purchase module only — branch.* / farmer.* / etc.
+ * will be added when their respective ownership policies are settled.
+ */
+const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
+  // Branch manager — owns everything that happens inside their branch,
+  // including approval and cancellation.
+  branch_manager: [
+    "purchase.read",
+    "purchase.create",
+    "purchase.update",
+    "purchase.approve",
+    "purchase.cancel",
+  ],
+
+  // HQ admin — read-only across branches; transactional rights belong to the
+  // branch_manager / super_admin level.
+  hq_admin: ["purchase.read"],
+
+  // Purchase staff — opens tickets and edits drafts, but cannot self-approve
+  // or cancel (separation of duties).
+  purchase_staff: [
+    "purchase.read",
+    "purchase.create",
+    "purchase.update",
+  ],
+
+  // QC staff — reads and edits the QC-relevant fields (rubberType / note) on
+  // WAITING_QC tickets, then forwards them to WAITING_APPROVAL.
+  qc_staff: ["purchase.read", "purchase.update"],
+
+  // Roles below need read access to trace where stock / payment / sales
+  // records originated, but no transactional rights on purchase tickets.
+  cashier: ["purchase.read"],
+  warehouse_staff: ["purchase.read"],
+  production_staff: ["purchase.read"],
+  sales_staff: ["purchase.read"],
+  viewer: ["purchase.read"],
+};
 
 // ─── Seeders ─────────────────────────────────────────────────────────────────
 
@@ -236,24 +318,61 @@ async function seedPermissions(
   return permissions;
 }
 
-async function linkSuperAdminPermissions(
+async function linkRolePermissions(
   tx: Prisma.TransactionClient,
-  superAdminRoleId: string,
+  roleId: string,
   permissionIds: ReadonlyArray<string>,
 ): Promise<number> {
   for (const permissionId of permissionIds) {
     await tx.rolePermission.upsert({
       where: {
-        roleId_permissionId: {
-          roleId: superAdminRoleId,
-          permissionId,
-        },
+        roleId_permissionId: { roleId, permissionId },
       },
-      create: { roleId: superAdminRoleId, permissionId },
+      create: { roleId, permissionId },
       update: {},
     });
   }
   return permissionIds.length;
+}
+
+type RoleLinkResult = Readonly<{
+  roleCode: string;
+  linked: number;
+  missingPermissions: ReadonlyArray<string>;
+}>;
+
+async function linkRolePermissionMap(
+  tx: Prisma.TransactionClient,
+  roles: ReadonlyArray<Role>,
+  permissions: ReadonlyArray<Permission>,
+  map: Readonly<Record<string, ReadonlyArray<string>>>,
+): Promise<ReadonlyArray<RoleLinkResult>> {
+  const rolesByCode = new Map(roles.map((r) => [r.code, r.id]));
+  const permsByCode = new Map(permissions.map((p) => [p.code, p.id]));
+
+  const results: RoleLinkResult[] = [];
+  for (const [roleCode, permCodes] of Object.entries(map)) {
+    const roleId = rolesByCode.get(roleCode);
+    if (!roleId) {
+      // Don't throw — surface as a warning so the seed remains forgiving if
+      // someone removes a role from `ROLES` without cleaning up the map.
+      console.warn(`⚠ Skipping unknown role in mapping: ${roleCode}`);
+      continue;
+    }
+    const permIds: string[] = [];
+    const missing: string[] = [];
+    for (const code of permCodes) {
+      const id = permsByCode.get(code);
+      if (!id) {
+        missing.push(code);
+        continue;
+      }
+      permIds.push(id);
+    }
+    const linked = await linkRolePermissions(tx, roleId, permIds);
+    results.push({ roleCode, linked, missingPermissions: missing });
+  }
+  return results;
 }
 
 // ─── Entrypoint ──────────────────────────────────────────────────────────────
@@ -274,10 +393,17 @@ async function main(): Promise<void> {
         );
       }
 
-      const linked = await linkSuperAdminPermissions(
+      const superAdminLinked = await linkRolePermissions(
         tx,
         superAdmin.id,
         permissions.map((p) => p.id),
+      );
+
+      const roleLinks = await linkRolePermissionMap(
+        tx,
+        roles,
+        permissions,
+        ROLE_PERMISSION_MAP,
       );
 
       return {
@@ -285,7 +411,8 @@ async function main(): Promise<void> {
         branchName: branch.name,
         roleCodes: roles.map((r) => r.code),
         permissionCodes: permissions.map((p) => p.code),
-        linked,
+        superAdminLinked,
+        roleLinks,
       };
     },
     { timeout: 30_000, maxWait: 10_000 },
@@ -307,8 +434,16 @@ async function main(): Promise<void> {
     console.log(`        · ${code}`);
   }
   console.log(
-    `   ✓ ${SUPER_ADMIN_CODE} → ${summary.linked} permissions linked`,
+    `   ✓ ${SUPER_ADMIN_CODE} → all ${summary.superAdminLinked} permissions linked`,
   );
+  for (const link of summary.roleLinks) {
+    console.log(
+      `   ✓ ${link.roleCode} → ${link.linked} permissions linked`,
+    );
+    for (const missing of link.missingPermissions) {
+      console.log(`        ⚠ missing permission code: ${missing}`);
+    }
+  }
   console.log("✓ Seed complete (idempotent)");
 }
 
