@@ -59,7 +59,14 @@ export function PurchaseList({
 
   return (
     <>
-      <ul className="flex flex-col gap-3 sm:hidden">
+      {/*
+        Card list — used for small AND medium viewports (anything below `lg`).
+        Switching from table to cards earlier (at lg, not sm) avoids the
+        squeezed/scroll-required state on tablets and small laptop windows.
+        All key fields are surfaced here so users never need to scroll the
+        table horizontally to see the data.
+      */}
+      <ul className="flex flex-col gap-3 lg:hidden">
         {purchases.map((p) => (
           <li key={p.id}>
             <Card>
@@ -118,18 +125,19 @@ export function PurchaseList({
 
       {/*
         Desktop table.
-        - Hidden under `sm` (mobile uses the card list above).
-        - `overflow-x-auto` is the safety net only — `min-w-[800px]` is sized
-          so the columns visible at each breakpoint fit comfortably without
-          collapsing under long values, and leaves headroom for upcoming
-          columns (e.g. withholding tax, net payable). Horizontal scroll only
-          appears on cramped layouts (sm viewports near 640–768px).
+        - Only shown at `lg` and above. Below `lg` the card list above takes
+          over — this prevents the squeezed/scrolled-table experience on
+          tablets and small laptop windows.
+        - `overflow-x-auto` is a true safety net for very narrow `lg`
+          viewports (e.g. with a wide sidebar). `min-w-[800px]` keeps columns
+          from collapsing on long values and leaves headroom for upcoming
+          columns (e.g. withholding tax, net payable).
         - All structural columns use `whitespace-nowrap` so headers, codes,
           numbers and dates never wrap and break vertical alignment. The
           customer cell is the one place we let text wrap, since names can be
           long.
       */}
-      <div className="hidden overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm sm:block dark:border-zinc-800 dark:bg-zinc-950">
+      <div className="hidden overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm lg:block dark:border-zinc-800 dark:bg-zinc-950">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[800px] text-left text-sm">
             <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
@@ -138,14 +146,14 @@ export function PurchaseList({
                   {t.fields.ticketNo}
                 </th>
                 {showBranchColumn ? (
-                  <th className="hidden whitespace-nowrap px-4 py-3 lg:table-cell">
+                  <th className="whitespace-nowrap px-4 py-3">
                     {t.fields.branch}
                   </th>
                 ) : null}
                 <th className="whitespace-nowrap px-4 py-3">
                   {t.fields.customer}
                 </th>
-                <th className="hidden whitespace-nowrap px-4 py-3 md:table-cell">
+                <th className="whitespace-nowrap px-4 py-3">
                   {t.fields.rubberType}
                 </th>
                 <th className="whitespace-nowrap px-4 py-3 text-right">
@@ -154,10 +162,10 @@ export function PurchaseList({
                 <th className="whitespace-nowrap px-4 py-3 text-right">
                   {t.fields.totalAmount}
                 </th>
-                <th className="hidden whitespace-nowrap px-4 py-3 md:table-cell">
+                <th className="whitespace-nowrap px-4 py-3">
                   {t.fields.status}
                 </th>
-                <th className="hidden whitespace-nowrap px-4 py-3 lg:table-cell">
+                <th className="whitespace-nowrap px-4 py-3">
                   {t.fields.createdAt}
                 </th>
                 <th className="whitespace-nowrap px-4 py-3 text-right">
@@ -175,7 +183,7 @@ export function PurchaseList({
                     {p.ticketNo}
                   </td>
                   {showBranchColumn ? (
-                    <td className="hidden whitespace-nowrap px-4 py-3 text-zinc-600 lg:table-cell dark:text-zinc-400">
+                    <td className="whitespace-nowrap px-4 py-3 text-zinc-600 dark:text-zinc-400">
                       {p.branch ? p.branch.code : "—"}
                     </td>
                   ) : null}
@@ -191,7 +199,7 @@ export function PurchaseList({
                       ) : null}
                     </div>
                   </td>
-                  <td className="hidden whitespace-nowrap px-4 py-3 text-zinc-600 md:table-cell dark:text-zinc-400">
+                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600 dark:text-zinc-400">
                     {rubberTypeLabel(p.rubberType) ?? p.rubberType}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-zinc-900 dark:text-zinc-50">
@@ -200,10 +208,10 @@ export function PurchaseList({
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
                     {formatNumber(p.totalAmount, 2)}
                   </td>
-                  <td className="hidden whitespace-nowrap px-4 py-3 md:table-cell">
+                  <td className="whitespace-nowrap px-4 py-3">
                     <StatusBadge status={p.status} size="sm" />
                   </td>
-                  <td className="hidden whitespace-nowrap px-4 py-3 text-zinc-600 lg:table-cell dark:text-zinc-400">
+                  <td className="whitespace-nowrap px-4 py-3 text-zinc-600 dark:text-zinc-400">
                     {formatDate(p.createdAt)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
