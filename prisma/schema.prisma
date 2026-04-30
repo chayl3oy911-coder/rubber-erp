@@ -43,6 +43,10 @@ model AppUser {
 
   stockLotsCreated      StockLot[]      @relation("StockLotCreator")
   stockMovementsCreated StockMovement[] @relation("StockMovementCreator")
+
+  salesOrdersCreated   SalesOrder[] @relation("SalesCreator")
+  salesOrdersConfirmed SalesOrder[] @relation("SalesConfirmer")
+  salesOrdersCancelled SalesOrder[] @relation("SalesCanceller")
 }
 
 // ─── RBAC ────────────────────────────────────────────────────────────────────
@@ -122,6 +126,7 @@ model Branch {
   purchaseTickets PurchaseTicket[]
   stockLots       StockLot[]
   stockMovements  StockMovement[]
+  salesOrders     SalesOrder[]
   auditLogs       AuditLog[]
 }
 
@@ -325,7 +330,8 @@ model StockLot {
   sourcePurchaseTicket PurchaseTicket @relation(fields: [sourcePurchaseTicketId], references: [id])
   createdBy            AppUser        @relation("StockLotCreator", fields: [createdById], references: [id])
 
-  movements StockMovement[]
+  movements   StockMovement[]
+  salesOrders SalesOrder[]
 
   @@unique([branchId, lotNo])
   // Hard guarantee that one PurchaseTicket cannot produce two lots, even on
@@ -370,6 +376,92 @@ model StockMovement {
   @@index([stockLotId, createdAt])
   @@index([branchId, movementType])
   @@index([referenceType, referenceId])
+}
+
+// ─── Sales (Factory sales + DRC) ─────────────────────────────────────────────
+//
+// One SalesOrder targets exactly one StockLot. Multiple sales can be created
+// from the same lot until its `remainingWeight` runs out. The wet weight
+// (`grossWeight`) is what actually leaves the lot via a SALES_OUT movement;
+// the dry weight (`drcWeight = grossWeight × drcPercent / 100`) is purely
+// a sale/revenue concept and NEVER touches stock.
+//
+// Cost / profit are snapshotted on this row at create-time (preview) AND
+// re-snapshotted at confirm (lot cost may have shifted via adjustments
+// between draft & confirm). Once CONFIRMED these are immutable historical
+// records — adjustments to the lot AFTER confirm do not retro-modify sales.
+//
+// Withholding tax / netReceivable / receivedAt / expectedReceiveDate are
+// reserved for the future Payment + Reconciliation module. Step 9 only
+// computes & stores them; no Payment row is created.
+//
+// Status string-coded ("DRAFT" | "CONFIRMED" | "CANCELLED") matching the
+// PurchaseTicket / StockLot convention. RECEIVED is reserved for the
+// future payment step.
+
+model SalesOrder {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId   String @db.Uuid
+  stockLotId String @db.Uuid
+  salesNo    String
+
+  // Buyer (factory). Snapshot at sale time even after a future
+  // BuyerFactory master is introduced, so historical rows survive renames.
+  buyerName  String
+  saleType   String // SALE | CONSIGNMENT
+  rubberType String // snapshot from StockLot at create-time
+
+  // ── Weights ──
+  // grossWeight = wet weight that actually leaves the lot (drives stock).
+  // drcWeight   = dry rubber content used for pricing (NEVER drives stock).
+  grossWeight Decimal @db.Decimal(12, 2)
+  drcPercent  Decimal @db.Decimal(5, 2)
+  drcWeight   Decimal @db.Decimal(12, 2)
+
+  // ── Sale price ──
+  pricePerKg  Decimal @db.Decimal(14, 4)
+  grossAmount Decimal @db.Decimal(14, 2) // = drcWeight × pricePerKg
+
+  // ── Withholding tax ──
+  withholdingTaxPercent Decimal @default(0) @db.Decimal(5, 2)
+  withholdingTaxAmount  Decimal @default(0) @db.Decimal(14, 2)
+  netReceivableAmount   Decimal @db.Decimal(14, 2) // = grossAmount − withholdingTaxAmount
+
+  // ── Cost / profit snapshot ──
+  // costAmount  = grossWeight × StockLot.effectiveCostPerKg (at confirm time)
+  // profitAmount = grossAmount − costAmount
+  costAmount   Decimal @default(0) @db.Decimal(14, 2)
+  profitAmount Decimal @default(0) @db.Decimal(14, 2)
+
+  // ── Status / lifecycle ──
+  status              String // DRAFT | CONFIRMED | CANCELLED
+  expectedReceiveDate DateTime?
+  receivedAt          DateTime?
+  note                String?
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  createdById   String    @db.Uuid
+  confirmedAt   DateTime?
+  confirmedById String?   @db.Uuid
+  cancelledAt   DateTime?
+  cancelledById String?   @db.Uuid
+  cancelReason  String?
+
+  branch      Branch   @relation(fields: [branchId], references: [id])
+  stockLot    StockLot @relation(fields: [stockLotId], references: [id])
+  createdBy   AppUser  @relation("SalesCreator", fields: [createdById], references: [id])
+  confirmedBy AppUser? @relation("SalesConfirmer", fields: [confirmedById], references: [id])
+  cancelledBy AppUser? @relation("SalesCanceller", fields: [cancelledById], references: [id])
+
+  @@unique([branchId, salesNo])
+  @@index([branchId])
+  @@index([branchId, status])
+  @@index([branchId, saleType])
+  @@index([branchId, createdAt])
+  @@index([stockLotId])
 }
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

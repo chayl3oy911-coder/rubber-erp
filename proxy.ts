@@ -12,6 +12,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     "/customers",
     "/purchases",
     "/stock",
+    "/sales",
   ];
   const needsAuth = PROTECTED_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/")

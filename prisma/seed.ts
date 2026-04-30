@@ -207,6 +207,30 @@ const PERMISSIONS: ReadonlyArray<PermissionSeed> = [
     description: "ดูประวัติ movement และ audit log ของ Stock อย่างละเอียด",
   },
   {
+    code: "sales.read",
+    module: "sales",
+    name: "ดูใบขาย",
+    description: "ดูใบขายและประวัติการขายโรงงาน",
+  },
+  {
+    code: "sales.create",
+    module: "sales",
+    name: "สร้างใบขาย",
+    description: "สร้างใบขายในสถานะ DRAFT (ยังไม่ตัด stock)",
+  },
+  {
+    code: "sales.confirm",
+    module: "sales",
+    name: "ยืนยันใบขาย",
+    description: "เปลี่ยน DRAFT → CONFIRMED และตัด stock ผ่าน SALES_OUT",
+  },
+  {
+    code: "sales.cancel",
+    module: "sales",
+    name: "ยกเลิกใบขาย",
+    description: "ยกเลิกใบขาย (พร้อม reverse stock ถ้าอยู่ในสถานะ CONFIRMED)",
+  },
+  {
     code: "user.manage",
     module: "user",
     name: "จัดการผู้ใช้",
@@ -245,7 +269,8 @@ const SUPER_ADMIN_CODE = "super_admin";
  */
 const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
   // Branch manager — owns everything that happens inside their branch,
-  // including approval and cancellation. Stock: full access.
+  // including approval and cancellation. Stock: full access. Sales: full
+  // (read/create/confirm/cancel).
   branch_manager: [
     "purchase.read",
     "purchase.create",
@@ -256,15 +281,21 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
     "stock.create",
     "stock.adjust",
     "stock.audit",
+    "sales.read",
+    "sales.create",
+    "sales.confirm",
+    "sales.cancel",
   ],
 
   // HQ admin — read-only across branches; transactional rights belong to the
-  // branch_manager / super_admin level. Stock: read + audit only.
-  hq_admin: ["purchase.read", "stock.read", "stock.audit"],
+  // branch_manager / super_admin level. Stock: read + audit only. Sales:
+  // read only (HQ doesn't transact, just observes).
+  hq_admin: ["purchase.read", "stock.read", "stock.audit", "sales.read"],
 
   // Purchase staff — opens tickets and edits drafts, but cannot self-approve
   // or cancel (separation of duties). Stock: can also create lots from their
   // approved tickets so the inbound flow doesn't bottleneck on warehouse.
+  // Sales: NOT visible (per Step 9 plan — kept tight).
   purchase_staff: [
     "purchase.read",
     "purchase.create",
@@ -278,21 +309,33 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
   qc_staff: ["purchase.read", "purchase.update", "stock.read"],
 
   // Warehouse staff — Stock day-to-day operators: read, create lots from
-  // approved purchases, and adjust (water loss, damage, etc.). They don't
-  // need full audit because branch_manager handles deep audits.
+  // approved purchases, and adjust (water loss, damage, etc.). Reads sales
+  // so they can confirm inventory consistency, but doesn't transact sales.
   warehouse_staff: [
     "purchase.read",
     "stock.read",
     "stock.create",
     "stock.adjust",
+    "sales.read",
   ],
 
-  // Roles below need read access to trace where stock / payment / sales
-  // records originated, but no transactional rights on purchase or stock.
-  cashier: ["purchase.read", "stock.read"],
+  // Sales staff — front-line sales authoring. Creates DRAFT sales but
+  // cannot self-confirm (confirm changes stock, separation of duties).
+  sales_staff: [
+    "purchase.read",
+    "stock.read",
+    "sales.read",
+    "sales.create",
+  ],
+
+  // Cashier — reads sales for cash/payment reconciliation in future steps.
+  cashier: ["purchase.read", "stock.read", "sales.read"],
+
+  // Production staff — no sales visibility this round.
   production_staff: ["purchase.read", "stock.read"],
-  sales_staff: ["purchase.read", "stock.read"],
-  viewer: ["purchase.read", "stock.read"],
+
+  // Read-only oversight role.
+  viewer: ["purchase.read", "stock.read", "sales.read"],
 };
 
 // ─── Seeders ─────────────────────────────────────────────────────────────────
@@ -363,15 +406,24 @@ async function linkRolePermissions(
   roleId: string,
   permissionIds: ReadonlyArray<string>,
 ): Promise<number> {
-  for (const permissionId of permissionIds) {
-    await tx.rolePermission.upsert({
-      where: {
-        roleId_permissionId: { roleId, permissionId },
-      },
-      create: { roleId, permissionId },
-      update: {},
-    });
-  }
+  // Bulk insert with `ON CONFLICT DO NOTHING` (Postgres) via Prisma's
+  // `skipDuplicates`. One round trip per role instead of N upserts —
+  // critical for remote DBs where each round trip costs hundreds of ms
+  // and the previous implementation regularly busted the tx timeout.
+  //
+  // Idempotency / additive-only contract is preserved:
+  //   - existing rows are NOT touched (ON CONFLICT DO NOTHING)
+  //   - the previous `update: {}` body was a no-op anyway, so dropping
+  //     it changes nothing observable in the data
+  //   - we do NOT delete rows that aren't in the seed map; manual grants
+  //     made via the admin UI remain intact
+  if (permissionIds.length === 0) return 0;
+  await tx.rolePermission.createMany({
+    data: permissionIds.map((permissionId) => ({ roleId, permissionId })),
+    skipDuplicates: true,
+  });
+  // Return the *intended* link count so the log line continues to read
+  // "N permissions linked" regardless of how many were already present.
   return permissionIds.length;
 }
 
@@ -455,7 +507,13 @@ async function main(): Promise<void> {
         roleLinks,
       };
     },
-    { timeout: 30_000, maxWait: 10_000 },
+    // Bumped from 30s to 90s. Even with the createMany() optimisation, the
+    // per-row upserts on Branch / Role / Permission still fire ~35 round
+    // trips against a remote DB; on slow links those alone can approach
+    // 20–30s. 90s gives generous headroom while still failing fast on a
+    // hung connection. `maxWait` tracks the time spent acquiring the
+    // transaction lock at the start.
+    { timeout: 90_000, maxWait: 20_000 },
   );
 
   console.log(

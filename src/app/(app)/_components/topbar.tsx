@@ -1,5 +1,15 @@
+import { getNotificationsSummary } from "@/modules/notifications/service";
+import type { NotificationsSummary } from "@/modules/notifications/types";
 import { logoutAction } from "@/shared/auth/actions";
 import { currentUser } from "@/shared/auth/dal";
+
+import { NotificationBell } from "./notification-bell";
+
+const EMPTY_SUMMARY: NotificationsSummary = {
+  total: 0,
+  items: [],
+  hasAny: false,
+};
 
 export async function Topbar() {
   const me = await currentUser();
@@ -9,6 +19,13 @@ export async function Topbar() {
       ? "Super Admin"
       : (me.roles[0]?.name ?? "ยังไม่ได้กำหนดบทบาท")
     : "ยังไม่เข้าสู่ระบบ";
+
+  // Fetch notifications inline with the topbar render. The service early-
+  // returns 0 for permissions the user lacks so the cost is bounded — at
+  // most three indexed COUNT queries in parallel.
+  const notifications = me
+    ? await getNotificationsSummary(me)
+    : EMPTY_SUMMARY;
 
   return (
     <header
@@ -28,7 +45,8 @@ export async function Topbar() {
 
       <div className="hidden md:block" />
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3">
+        {me ? <NotificationBell summary={notifications} /> : null}
         <div className="hidden text-right md:block">
           <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
             {me?.displayName ?? "ผู้ใช้"}
@@ -39,14 +57,14 @@ export async function Topbar() {
         </div>
         <div
           aria-hidden="true"
-          className="flex size-9 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"
         >
           {initial}
         </div>
         <form action={logoutAction}>
           <button
             type="submit"
-            className="inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
+            className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
           >
             ออกจากระบบ
           </button>
