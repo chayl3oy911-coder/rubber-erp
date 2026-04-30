@@ -6,8 +6,10 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { user, response } = await updateProxySession(request);
   const pathname = request.nextUrl.pathname;
 
-  const needsAuth =
-    pathname === "/dashboard" || pathname.startsWith("/dashboard/");
+  const PROTECTED_PREFIXES = ["/dashboard", "/branches"];
+  const needsAuth = PROTECTED_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(p + "/")
+  );
   const isLoginPage = pathname === "/login";
 
   if (!user && needsAuth) {

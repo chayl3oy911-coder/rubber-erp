@@ -9,6 +9,16 @@ const paths: Record<NavIconName, React.ReactNode> = {
       <rect x="3" y="16" width="7" height="5" rx="1" />
     </>
   ),
+  branches: (
+    <>
+      <path d="M3 21h18" />
+      <path d="M5 21V7l8-4v18" />
+      <path d="M19 21V11l-6-4" />
+      <path d="M9 9h0" />
+      <path d="M9 13h0" />
+      <path d="M9 17h0" />
+    </>
+  ),
   purchase: (
     <>
       <path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2" />
