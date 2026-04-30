@@ -1,6 +1,7 @@
 export type NavIconName =
   | "dashboard"
   | "branches"
+  | "farmers"
   | "purchase"
   | "stock"
   | "production"
@@ -17,6 +18,7 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   { href: "/dashboard", label: "แดชบอร์ด", icon: "dashboard" },
   { href: "/branches", label: "สาขา", icon: "branches" },
+  { href: "/farmers", label: "เกษตรกร", icon: "farmers" },
   { href: "/purchases", label: "ใบรับซื้อ", icon: "purchase" },
   { href: "/stock", label: "สต็อก", icon: "stock" },
   { href: "/production", label: "การผลิต", icon: "production" },

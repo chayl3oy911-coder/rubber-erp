@@ -6,7 +6,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { user, response } = await updateProxySession(request);
   const pathname = request.nextUrl.pathname;
 
-  const PROTECTED_PREFIXES = ["/dashboard", "/branches"];
+  const PROTECTED_PREFIXES = ["/dashboard", "/branches", "/farmers"];
   const needsAuth = PROTECTED_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
   );
