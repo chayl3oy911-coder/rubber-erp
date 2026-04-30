@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { farmerBankLabel } from "@/modules/farmer/banks";
 import type { FarmerDTO } from "@/modules/farmer/dto";
 import { farmerT } from "@/modules/farmer/i18n";
 import { Card, CardContent } from "@/shared/ui";
@@ -89,7 +90,7 @@ export function FarmerList({
                           {t.fields.bankName}:{" "}
                         </dt>
                         <dd className="inline">
-                          {f.bankName}
+                          {farmerBankLabel(f.bankName)}
                           {f.bankAccountNo ? ` · ${f.bankAccountNo}` : ""}
                         </dd>
                       </div>
@@ -161,7 +162,7 @@ export function FarmerList({
                   </td>
                   <td className="hidden px-4 py-3 text-zinc-600 xl:table-cell dark:text-zinc-400">
                     {f.bankName
-                      ? `${f.bankName}${f.bankAccountNo ? ` · ${f.bankAccountNo}` : ""}`
+                      ? `${farmerBankLabel(f.bankName)}${f.bankAccountNo ? ` · ${f.bankAccountNo}` : ""}`
                       : "—"}
                   </td>
                   <td className="px-4 py-3">

@@ -15,6 +15,7 @@ import {
 } from "./schemas";
 import {
   BranchNotInScopeError,
+  FarmerCodeAutoGenError,
   FarmerCodeConflictError,
   FarmerNotFoundError,
   createFarmer,
@@ -94,6 +95,12 @@ export async function createFarmerAction(
     if (error instanceof BranchNotInScopeError) {
       return {
         fieldErrors: { branchId: error.message },
+        values: raw,
+      };
+    }
+    if (error instanceof FarmerCodeAutoGenError) {
+      return {
+        error: error.message,
         values: raw,
       };
     }

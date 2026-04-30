@@ -35,6 +35,7 @@ type FarmerDict = {
   };
   hints: {
     code: string;
+    codeAuto: string;
     optional: string;
     notesOptional: string;
   };
@@ -43,9 +44,9 @@ type FarmerDict = {
     fullName: string;
     phone: string;
     nationalId: string;
-    bankName: string;
     bankAccountNo: string;
     selectBranch: string;
+    selectBank: string;
     search: string;
   };
   actions: {
@@ -67,14 +68,14 @@ type FarmerDict = {
   errors: {
     invalidJson: string;
     validation: string;
-    codeRequired: string;
     codeFormat: string;
     codeTooLong: string;
+    codeAutoGenFailed: string;
     fullNameRequired: string;
     fullNameTooLong: string;
     phoneTooLong: string;
     nationalIdTooLong: string;
-    bankNameTooLong: string;
+    bankInvalid: string;
     bankAccountNoTooLong: string;
     notesTooLong: string;
     branchRequired: string;
@@ -129,17 +130,18 @@ const TH: FarmerDict = {
   },
   hints: {
     code: "ใช้ A-Z, 0-9, _, - เท่านั้น (ไม่ซ้ำในสาขาเดียวกัน)",
+    codeAuto: "ปล่อยว่างเพื่อให้ระบบสร้างให้ (เช่น FAR000001)",
     optional: "(ถ้ามี)",
     notesOptional: "(ถ้ามี — ไม่เกิน 1000 ตัวอักษร)",
   },
   placeholders: {
-    code: "เช่น F0001",
+    code: "เช่น FAR000001 (หรือเว้นว่างให้ระบบสร้าง)",
     fullName: "เช่น สมชาย ใจดี",
     phone: "เช่น 081-xxx-xxxx",
     nationalId: "เช่น 1-2345-67890-12-3",
-    bankName: "เช่น ธ.กสิกรไทย",
     bankAccountNo: "เช่น 123-4-56789-0",
     selectBranch: "— เลือกสาขา —",
+    selectBank: "— ไม่ระบุ —",
     search: "ค้นหา รหัส / ชื่อ / เบอร์",
   },
   actions: {
@@ -161,14 +163,14 @@ const TH: FarmerDict = {
   errors: {
     invalidJson: "รูปแบบข้อมูลไม่ถูกต้อง",
     validation: "ข้อมูลไม่ถูกต้อง",
-    codeRequired: "กรุณากรอกรหัสเกษตรกร",
     codeFormat: "รหัสเกษตรกรใช้ได้เฉพาะ A-Z, 0-9, _, -",
     codeTooLong: "รหัสเกษตรกรยาวเกิน 20 ตัวอักษร",
+    codeAutoGenFailed: "ระบบสร้างรหัสไม่สำเร็จ กรุณาลองอีกครั้ง",
     fullNameRequired: "กรุณากรอกชื่อ-นามสกุล",
     fullNameTooLong: "ชื่อ-นามสกุลยาวเกิน 200 ตัวอักษร",
     phoneTooLong: "เบอร์โทรยาวเกิน 40 ตัวอักษร",
     nationalIdTooLong: "เลขบัตรประชาชนยาวเกิน 20 ตัวอักษร",
-    bankNameTooLong: "ชื่อธนาคารยาวเกิน 100 ตัวอักษร",
+    bankInvalid: "กรุณาเลือกธนาคารจากรายการ",
     bankAccountNoTooLong: "เลขที่บัญชียาวเกิน 50 ตัวอักษร",
     notesTooLong: "หมายเหตุยาวเกิน 1000 ตัวอักษร",
     branchRequired: "กรุณาเลือกสาขา",
@@ -225,17 +227,18 @@ const EN: FarmerDict = {
   },
   hints: {
     code: "A-Z, 0-9, _, - only (unique within the same branch)",
+    codeAuto: "Leave blank to auto-generate (e.g. FAR000001)",
     optional: "(optional)",
     notesOptional: "(optional — up to 1000 characters)",
   },
   placeholders: {
-    code: "e.g. F0001",
+    code: "e.g. FAR000001 (or leave blank to auto-generate)",
     fullName: "e.g. John Doe",
     phone: "e.g. 081-xxx-xxxx",
     nationalId: "e.g. 1-2345-67890-12-3",
-    bankName: "e.g. Kasikorn",
     bankAccountNo: "e.g. 123-4-56789-0",
     selectBranch: "— Select branch —",
+    selectBank: "— Not specified —",
     search: "Search code / name / phone",
   },
   actions: {
@@ -257,14 +260,14 @@ const EN: FarmerDict = {
   errors: {
     invalidJson: "Invalid request body",
     validation: "Invalid input",
-    codeRequired: "Please enter a farmer code",
     codeFormat: "Use A-Z, 0-9, _, - only",
     codeTooLong: "Farmer code exceeds 20 characters",
+    codeAutoGenFailed: "Failed to generate a unique code. Please try again.",
     fullNameRequired: "Please enter full name",
     fullNameTooLong: "Full name exceeds 200 characters",
     phoneTooLong: "Phone exceeds 40 characters",
     nationalIdTooLong: "National ID exceeds 20 characters",
-    bankNameTooLong: "Bank name exceeds 100 characters",
+    bankInvalid: "Please pick a bank from the list",
     bankAccountNoTooLong: "Account no. exceeds 50 characters",
     notesTooLong: "Notes exceed 1000 characters",
     branchRequired: "Please select a branch",

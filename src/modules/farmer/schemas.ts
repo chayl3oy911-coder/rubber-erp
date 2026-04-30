@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { FARMER_BANK_CODES } from "./banks";
 import { farmerT } from "./i18n";
 
 const t = farmerT();
@@ -14,10 +15,28 @@ const optionalText = (max: number, message: string) =>
     z.string().max(max, message).optional(),
   );
 
-const codeField = z
+/**
+ * Optional code: enforces format & length when provided. When absent the
+ * service auto-generates `FAR######` (see `service.generateNextFarmerCode`).
+ */
+const optionalCodeField = z.preprocess(
+  (v) => {
+    if (v === null || v === undefined) return undefined;
+    const s = String(v).trim();
+    return s === "" ? undefined : s;
+  },
+  z
+    .string()
+    .max(20, t.errors.codeTooLong)
+    .regex(/^[A-Z0-9_-]+$/, t.errors.codeFormat)
+    .optional(),
+);
+
+/** Required code (used by the update schema where empty means "no change"). */
+const requiredCodeField = z
   .string()
   .trim()
-  .min(1, t.errors.codeRequired)
+  .min(1, t.errors.codeFormat)
   .max(20, t.errors.codeTooLong)
   .regex(/^[A-Z0-9_-]+$/, t.errors.codeFormat);
 
@@ -33,13 +52,30 @@ const branchIdField = z
   .min(1, t.errors.branchRequired)
   .uuid(t.errors.branchInvalid);
 
+/**
+ * Bank: empty allowed; if present must be one of the registered codes.
+ * We reject unknown codes at the API/Action boundary so the DB never
+ * receives free-form strings going forward.
+ */
+const bankCodeField = z.preprocess(
+  (v) => {
+    if (v === null || v === undefined) return undefined;
+    const s = String(v).trim();
+    return s === "" ? undefined : s;
+  },
+  z
+    .string()
+    .refine((v) => FARMER_BANK_CODES.has(v), { message: t.errors.bankInvalid })
+    .optional(),
+);
+
 export const createFarmerSchema = z.object({
   branchId: branchIdField,
-  code: codeField,
+  code: optionalCodeField,
   fullName: fullNameField,
   phone: optionalText(40, t.errors.phoneTooLong),
   nationalId: optionalText(20, t.errors.nationalIdTooLong),
-  bankName: optionalText(100, t.errors.bankNameTooLong),
+  bankName: bankCodeField,
   bankAccountNo: optionalText(50, t.errors.bankAccountNoTooLong),
   notes: optionalText(1000, t.errors.notesTooLong),
 });
@@ -53,11 +89,11 @@ export type CreateFarmerInput = z.infer<typeof createFarmerSchema>;
  */
 export const updateFarmerSchema = z
   .object({
-    code: codeField.optional(),
+    code: requiredCodeField.optional(),
     fullName: fullNameField.optional(),
     phone: optionalText(40, t.errors.phoneTooLong),
     nationalId: optionalText(20, t.errors.nationalIdTooLong),
-    bankName: optionalText(100, t.errors.bankNameTooLong),
+    bankName: bankCodeField,
     bankAccountNo: optionalText(50, t.errors.bankAccountNoTooLong),
     notes: optionalText(1000, t.errors.notesTooLong),
     isActive: z.boolean().optional(),
@@ -117,3 +153,7 @@ export type ListFarmersQuery = z.infer<typeof listFarmersQuerySchema>;
 
 export const FARMER_PAGE_SIZE_DEFAULT = DEFAULT_PAGE_SIZE;
 export const FARMER_PAGE_SIZE_MAX = MAX_PAGE_SIZE;
+
+// Auto-generated code constants
+export const FARMER_AUTO_CODE_PREFIX = "FAR";
+export const FARMER_AUTO_CODE_PADDING = 6;

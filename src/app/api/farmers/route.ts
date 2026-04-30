@@ -7,6 +7,7 @@ import {
 } from "@/modules/farmer/schemas";
 import {
   BranchNotInScopeError,
+  FarmerCodeAutoGenError,
   FarmerCodeConflictError,
   createFarmer,
   listFarmers,
@@ -86,6 +87,12 @@ export async function POST(request: NextRequest) {
     if (error instanceof FarmerCodeConflictError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
+    if (error instanceof FarmerCodeAutoGenError) {
+      // Auto-gen retries exhausted because every attempt collided with a
+      // concurrent insert — semantically a conflict, not a service outage.
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    // Anything else falls through and Next.js returns 500 by default.
     throw error;
   }
 }

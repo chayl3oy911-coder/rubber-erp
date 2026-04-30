@@ -6,6 +6,7 @@ import type {
   FarmerActionState,
   FarmerFieldKey,
 } from "@/modules/farmer/action-state";
+import { FARMER_BANKS } from "@/modules/farmer/banks";
 import { farmerT } from "@/modules/farmer/i18n";
 import { Button, Input, Label } from "@/shared/ui";
 
@@ -138,10 +139,10 @@ export function FarmerForm({
         id="code"
         name="code"
         label={t.fields.code}
-        required
+        required={mode === "edit"}
         defaultValue={valueFor("code")}
         error={state.fieldErrors?.code}
-        hint={t.hints.code}
+        hint={mode === "create" ? t.hints.codeAuto : t.hints.code}
         autoComplete="off"
         autoCapitalize="characters"
         placeholder={t.placeholders.code}
@@ -185,16 +186,30 @@ export function FarmerForm({
       />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormField
-          id="bankName"
-          name="bankName"
-          label={`${t.fields.bankName} ${t.hints.optional}`}
-          defaultValue={valueFor("bankName")}
-          error={state.fieldErrors?.bankName}
-          placeholder={t.placeholders.bankName}
-          disabled={pending}
-          maxLength={100}
-        />
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="bankName">
+            {t.fields.bankName} {t.hints.optional}
+          </Label>
+          <select
+            id="bankName"
+            name="bankName"
+            disabled={pending}
+            defaultValue={valueFor("bankName")}
+            className="h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          >
+            <option value="">{t.placeholders.selectBank}</option>
+            {FARMER_BANKS.map((b) => (
+              <option key={b.code} value={b.code}>
+                {b.th}
+              </option>
+            ))}
+          </select>
+          {state.fieldErrors?.bankName ? (
+            <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+              {state.fieldErrors.bankName}
+            </p>
+          ) : null}
+        </div>
         <FormField
           id="bankAccountNo"
           name="bankAccountNo"
