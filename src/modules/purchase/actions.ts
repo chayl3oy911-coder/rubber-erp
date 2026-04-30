@@ -21,6 +21,7 @@ import {
   CustomerInactiveError,
   CustomerNotFoundForPurchaseError,
   PurchaseAutoGenError,
+  PurchaseHasStockLotError,
   PurchaseNotFoundError,
   StatusFieldsLockedError,
   StatusTransitionError,
@@ -227,7 +228,8 @@ export async function transitionPurchaseStatusAction(
     }
     if (
       error instanceof StatusTransitionError ||
-      error instanceof CancelReasonRequiredError
+      error instanceof CancelReasonRequiredError ||
+      error instanceof PurchaseHasStockLotError
     ) {
       // Best UX is to re-show the detail page with a flash error, but until
       // we have a flash framework, redirect with a query param the page can

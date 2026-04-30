@@ -40,6 +40,9 @@ model AppUser {
   purchaseTicketsCreated   PurchaseTicket[] @relation("PurchaseCreator")
   purchaseTicketsApproved  PurchaseTicket[] @relation("PurchaseApprover")
   purchaseTicketsCancelled PurchaseTicket[] @relation("PurchaseCanceller")
+
+  stockLotsCreated      StockLot[]      @relation("StockLotCreator")
+  stockMovementsCreated StockMovement[] @relation("StockMovementCreator")
 }
 
 // ─── RBAC ────────────────────────────────────────────────────────────────────
@@ -117,6 +120,8 @@ model Branch {
   userBranches    UserBranch[]
   customers       Customer[]
   purchaseTickets PurchaseTicket[]
+  stockLots       StockLot[]
+  stockMovements  StockMovement[]
   auditLogs       AuditLog[]
 }
 
@@ -212,41 +217,41 @@ model CustomerBankAccount {
 // belong to a future Setting/Company table read at print time.
 
 model PurchaseTicket {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  branchId      String   @db.Uuid
-  customerId    String   @db.Uuid
-  ticketNo      String
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId   String @db.Uuid
+  customerId String @db.Uuid
+  ticketNo   String
 
-  rubberType    String
+  rubberType String
 
-  grossWeight   Decimal  @db.Decimal(12, 2)
-  tareWeight    Decimal  @db.Decimal(12, 2) @default(0)
-  netWeight     Decimal  @db.Decimal(12, 2)
-  pricePerKg    Decimal  @db.Decimal(12, 4)
-  totalAmount   Decimal  @db.Decimal(14, 2)
+  grossWeight Decimal @db.Decimal(12, 2)
+  tareWeight  Decimal @default(0) @db.Decimal(12, 2)
+  netWeight   Decimal @db.Decimal(12, 2)
+  pricePerKg  Decimal @db.Decimal(12, 4)
+  totalAmount Decimal @db.Decimal(14, 2)
 
   // ─── Withholding tax (เก็บลง DB ทุกใบเพื่อ trace ภาษีย้อนหลังได้) ──────────
   // pricePerKg ยังคง 4 ตำแหน่งเพราะตลาดยางจริงใช้ทศนิยม 4 ตำแหน่ง.
   // weight/total/tax/netPayable ใช้ 2 ตำแหน่งทั้งหมด.
   // service จะ recompute และเขียนทับเสมอ — `@default(0)` มีไว้กัน migration
   // แตกถ้ามี row เก่าโผล่มา (ไม่ควรเกิดในรอบนี้เพราะตารางว่าง).
-  withholdingTaxPercent Decimal @db.Decimal(5, 2)  @default(0)
-  withholdingTaxAmount  Decimal @db.Decimal(14, 2) @default(0)
-  netPayableAmount      Decimal @db.Decimal(14, 2) @default(0)
+  withholdingTaxPercent Decimal @default(0) @db.Decimal(5, 2)
+  withholdingTaxAmount  Decimal @default(0) @db.Decimal(14, 2)
+  netPayableAmount      Decimal @default(0) @db.Decimal(14, 2)
 
-  status        String
-  note          String?
+  status String
+  note   String?
 
   approvedAt    DateTime?
-  approvedById  String?  @db.Uuid
+  approvedById  String?   @db.Uuid
   cancelledAt   DateTime?
-  cancelledById String?  @db.Uuid
+  cancelledById String?   @db.Uuid
   cancelReason  String?
 
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  createdById   String   @db.Uuid
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String   @db.Uuid
 
   branch      Branch   @relation(fields: [branchId], references: [id])
   customer    Customer @relation(fields: [customerId], references: [id])
@@ -254,10 +259,117 @@ model PurchaseTicket {
   approvedBy  AppUser? @relation("PurchaseApprover", fields: [approvedById], references: [id])
   cancelledBy AppUser? @relation("PurchaseCanceller", fields: [cancelledById], references: [id])
 
+  // 1 ticket → 1 lot. Reverse side; the unique constraint lives on `StockLot`.
+  stockLot StockLot?
+
   @@unique([branchId, ticketNo])
   @@index([branchId, status])
   @@index([branchId, createdAt])
   @@index([customerId])
+}
+
+// ─── Stock ───────────────────────────────────────────────────────────────────
+//
+// Lot-based stock — one APPROVED PurchaseTicket creates exactly one StockLot
+// (enforced both in the service layer and by `@@unique([sourcePurchaseTicketId])`).
+// Aggregate stock is forbidden: every weight change MUST flow through a
+// StockMovement row, never via a direct UPDATE on `remainingWeight`.
+//
+// Cost rules:
+// - `costAmount` = PurchaseTicket.totalAmount at the time of inbound (cost
+//   of goods received). Withholding tax / net payable are payment-layer
+//   concerns and intentionally not used as stock cost.
+// - `effectiveCostPerKg` = costAmount / remainingWeight, recomputed on every
+//   weight change. Adjustments (e.g. WATER_LOSS) keep `costAmount` constant
+//   but raise `effectiveCostPerKg` proportionally — modelling sunk cost on
+//   weight loss exactly as accountants expect.
+// - When `remainingWeight` reaches 0 the lot becomes `DEPLETED` and the
+//   `effectiveCostPerKg` is FROZEN at its last value (no division by zero,
+//   and the final cost rate stays auditable forever).
+//
+// Status string-coded ("ACTIVE" | "DEPLETED" | "CANCELLED") to match the
+// PurchaseTicket convention; we'll only reach for a Postgres enum when the
+// value-set genuinely stabilises.
+//
+// Movement types are append-only history (PURCHASE_IN / ADJUST_IN /
+// ADJUST_OUT in this step; SALES_OUT / PRODUCTION_* / CANCEL_REVERSE land in
+// later phases). `quantity` is always absolute (≥ 0) — the type carries the
+// direction. `beforeWeight` / `afterWeight` are the lot's `remainingWeight`
+// snapshots before/after this movement so reports can replay history without
+// joining back to the lot.
+
+model StockLot {
+  id                     String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId               String @db.Uuid
+  sourcePurchaseTicketId String @db.Uuid
+  lotNo                  String
+
+  rubberType String
+
+  // Weights — 2 dp matches PurchaseTicket.netWeight precisely.
+  initialWeight   Decimal @db.Decimal(12, 2)
+  remainingWeight Decimal @db.Decimal(12, 2)
+
+  // Cost — 2 dp on totals (Thai retail/tax norm); 4 dp on rate to absorb
+  // recompute drift from adjustments without losing precision.
+  costAmount         Decimal @db.Decimal(14, 2)
+  effectiveCostPerKg Decimal @db.Decimal(14, 4)
+
+  status      String // ACTIVE | DEPLETED | CANCELLED
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdById String   @db.Uuid
+
+  branch               Branch         @relation(fields: [branchId], references: [id])
+  sourcePurchaseTicket PurchaseTicket @relation(fields: [sourcePurchaseTicketId], references: [id])
+  createdBy            AppUser        @relation("StockLotCreator", fields: [createdById], references: [id])
+
+  movements StockMovement[]
+
+  @@unique([branchId, lotNo])
+  // Hard guarantee that one PurchaseTicket cannot produce two lots, even on
+  // concurrent requests. Service catches P2002 and surfaces 409.
+  @@unique([sourcePurchaseTicketId])
+  @@index([branchId])
+  @@index([branchId, status])
+  @@index([branchId, rubberType])
+  @@index([branchId, createdAt])
+}
+
+model StockMovement {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId   String @db.Uuid
+  stockLotId String @db.Uuid
+
+  movementType String // PURCHASE_IN | ADJUST_IN | ADJUST_OUT | SALES_OUT | PRODUCTION_OUT | PRODUCTION_IN | CANCEL_REVERSE
+  quantity     Decimal @db.Decimal(12, 2)
+
+  beforeWeight Decimal @db.Decimal(12, 2)
+  afterWeight  Decimal @db.Decimal(12, 2)
+
+  // For ADJUST_*: required (validated in service).
+  // For PURCHASE_IN / SALES_OUT / etc.: null.
+  reasonType String? // WATER_LOSS | DAMAGE | SCALE_ERROR | MANUAL_CORRECTION | OTHER
+
+  // Polymorphic reference back to whatever drove this movement (e.g.
+  // PurchaseTicket / Sale / ProductionOrder). Both fields are null for
+  // manual ADJUST_* — those are uniquely identified by `id` + lot history.
+  referenceType String?
+  referenceId   String? @db.Uuid
+
+  note String?
+
+  createdAt   DateTime @default(now())
+  createdById String   @db.Uuid
+
+  branch    Branch   @relation(fields: [branchId], references: [id])
+  stockLot  StockLot @relation(fields: [stockLotId], references: [id])
+  createdBy AppUser  @relation("StockMovementCreator", fields: [createdById], references: [id])
+
+  @@index([stockLotId, createdAt])
+  @@index([branchId, movementType])
+  @@index([referenceType, referenceId])
 }
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

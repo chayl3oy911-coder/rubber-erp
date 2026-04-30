@@ -4,6 +4,7 @@ import { purchaseT } from "@/modules/purchase/i18n";
 import { patchPurchaseSchema } from "@/modules/purchase/schemas";
 import {
   CancelReasonRequiredError,
+  PurchaseHasStockLotError,
   PurchaseNotFoundError,
   StatusFieldsLockedError,
   StatusTransitionError,
@@ -89,6 +90,9 @@ export async function PATCH(
           },
           { status: 400 },
         );
+      }
+      if (error instanceof PurchaseHasStockLotError) {
+        return NextResponse.json({ error: error.message }, { status: 409 });
       }
       throw error;
     }

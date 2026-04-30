@@ -134,6 +134,7 @@ type PurchaseDict = {
     statusTransitionForbidden: (from: string, to: string) => string;
     statusFieldsLocked: string;
     cancelReasonRequired: string;
+    cancelBlockedByStockLot: string;
     notFound: string;
     ticketNoConflict: string;
     autoGenFailed: string;
@@ -286,6 +287,8 @@ const TH: PurchaseDict = {
       `ไม่สามารถเปลี่ยนสถานะจาก "${from}" เป็น "${to}"`,
     statusFieldsLocked: "ฟิลด์นี้ถูกล็อกตามสถานะปัจจุบัน",
     cancelReasonRequired: "ต้องระบุเหตุผลเมื่อยกเลิกใบที่อนุมัติแล้ว",
+    cancelBlockedByStockLot:
+      "ใบนี้ถูกรับเข้า Stock แล้ว ห้ามยกเลิก กรุณาติดต่อผู้ดูแล Stock เพื่อทำรายการย้อนกลับ",
     notFound: "ไม่พบใบรับซื้อที่ระบุ",
     ticketNoConflict: "เลขที่ใบรับซื้อชนกัน กรุณาลองอีกครั้ง",
     autoGenFailed: "ระบบสร้างเลขที่ใบรับซื้อไม่สำเร็จ กรุณาลองอีกครั้ง",
@@ -448,6 +451,8 @@ const EN: PurchaseDict = {
     statusFieldsLocked: "This field is locked by the current status",
     cancelReasonRequired:
       "A cancel reason is required when cancelling an APPROVED ticket",
+    cancelBlockedByStockLot:
+      "Cannot cancel: this ticket has already been received into stock. Ask a stock administrator to perform a reverse adjustment.",
     notFound: "Ticket not found",
     ticketNoConflict: "Ticket number collision — please retry",
     autoGenFailed: "Failed to generate a unique ticket number — please retry",

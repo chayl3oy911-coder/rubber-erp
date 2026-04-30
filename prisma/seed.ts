@@ -183,6 +183,30 @@ const PERMISSIONS: ReadonlyArray<PermissionSeed> = [
     description: "ยกเลิกใบรับซื้อ (สถานะที่ยังไม่ CANCELLED)",
   },
   {
+    code: "stock.read",
+    module: "stock",
+    name: "ดู Stock",
+    description: "ดูข้อมูล Stock Lot และการเคลื่อนไหวสต็อก",
+  },
+  {
+    code: "stock.create",
+    module: "stock",
+    name: "สร้าง Stock Lot",
+    description: "รับเข้า Stock จากใบรับซื้อที่อนุมัติแล้ว",
+  },
+  {
+    code: "stock.adjust",
+    module: "stock",
+    name: "ปรับ Stock",
+    description: "ปรับเข้า/ปรับออก Stock พร้อมระบุเหตุผล",
+  },
+  {
+    code: "stock.audit",
+    module: "stock",
+    name: "ตรวจสอบ Stock",
+    description: "ดูประวัติ movement และ audit log ของ Stock อย่างละเอียด",
+  },
+  {
     code: "user.manage",
     module: "user",
     name: "จัดการผู้ใช้",
@@ -221,38 +245,54 @@ const SUPER_ADMIN_CODE = "super_admin";
  */
 const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
   // Branch manager — owns everything that happens inside their branch,
-  // including approval and cancellation.
+  // including approval and cancellation. Stock: full access.
   branch_manager: [
     "purchase.read",
     "purchase.create",
     "purchase.update",
     "purchase.approve",
     "purchase.cancel",
+    "stock.read",
+    "stock.create",
+    "stock.adjust",
+    "stock.audit",
   ],
 
   // HQ admin — read-only across branches; transactional rights belong to the
-  // branch_manager / super_admin level.
-  hq_admin: ["purchase.read"],
+  // branch_manager / super_admin level. Stock: read + audit only.
+  hq_admin: ["purchase.read", "stock.read", "stock.audit"],
 
   // Purchase staff — opens tickets and edits drafts, but cannot self-approve
-  // or cancel (separation of duties).
+  // or cancel (separation of duties). Stock: can also create lots from their
+  // approved tickets so the inbound flow doesn't bottleneck on warehouse.
   purchase_staff: [
     "purchase.read",
     "purchase.create",
     "purchase.update",
+    "stock.read",
+    "stock.create",
   ],
 
   // QC staff — reads and edits the QC-relevant fields (rubberType / note) on
   // WAITING_QC tickets, then forwards them to WAITING_APPROVAL.
-  qc_staff: ["purchase.read", "purchase.update"],
+  qc_staff: ["purchase.read", "purchase.update", "stock.read"],
+
+  // Warehouse staff — Stock day-to-day operators: read, create lots from
+  // approved purchases, and adjust (water loss, damage, etc.). They don't
+  // need full audit because branch_manager handles deep audits.
+  warehouse_staff: [
+    "purchase.read",
+    "stock.read",
+    "stock.create",
+    "stock.adjust",
+  ],
 
   // Roles below need read access to trace where stock / payment / sales
-  // records originated, but no transactional rights on purchase tickets.
-  cashier: ["purchase.read"],
-  warehouse_staff: ["purchase.read"],
-  production_staff: ["purchase.read"],
-  sales_staff: ["purchase.read"],
-  viewer: ["purchase.read"],
+  // records originated, but no transactional rights on purchase or stock.
+  cashier: ["purchase.read", "stock.read"],
+  production_staff: ["purchase.read", "stock.read"],
+  sales_staff: ["purchase.read", "stock.read"],
+  viewer: ["purchase.read", "stock.read"],
 };
 
 // ─── Seeders ─────────────────────────────────────────────────────────────────

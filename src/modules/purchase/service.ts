@@ -100,6 +100,22 @@ export class CancelReasonRequiredError extends Error {
   }
 }
 
+/**
+ * Once a StockLot has been generated from a PurchaseTicket the ticket is
+ * effectively financial-locked: cancelling it would orphan the stock and
+ * decouple cost-of-goods from any future sale/production. Service refuses
+ * the transition; API maps to 409 Conflict.
+ *
+ * Stock-side reversal lives in a future flow (CANCEL_REVERSE movement) —
+ * out of scope for this step.
+ */
+export class PurchaseHasStockLotError extends Error {
+  constructor() {
+    super(t.errors.cancelBlockedByStockLot);
+    this.name = "PurchaseHasStockLotError";
+  }
+}
+
 // ─── Audit helpers ───────────────────────────────────────────────────────────
 
 export type AuditMeta = {
@@ -688,6 +704,19 @@ export async function transitionPurchaseStatus(
     !(cancelReason && cancelReason.trim().length > 0)
   ) {
     throw new CancelReasonRequiredError();
+  }
+
+  // Cancel guard: once stock has been received from this ticket, cancelling
+  // would orphan the lot. We block here (Step 8) — a proper reversal flow
+  // lives in a future Stock-Cancel feature with CANCEL_REVERSE movements.
+  if (plan.action === "cancel") {
+    const lot = await prisma.stockLot.findUnique({
+      where: { sourcePurchaseTicketId: existing.id },
+      select: { id: true },
+    });
+    if (lot) {
+      throw new PurchaseHasStockLotError();
+    }
   }
 
   const now = new Date();
