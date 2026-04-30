@@ -19,10 +19,10 @@ modules/
 1. `auth` — session, login/logout, currentUser
 2. `rbac` — roles, permissions, requirePermission()
 3. `branch` — สาขา
-4. `farmer` — เกษตรกร
+4. `customer` — ลูกค้า (เกษตรกร / พ่อค้าคนกลาง / สหกรณ์)
 5. `purchase-ticket` — ใบรับซื้อ
 6. `quality-check` — DRC / ความชื้น / เกรด
-7. `purchase-payment` — จ่ายเงินเกษตรกร
+7. `purchase-payment` — จ่ายเงินลูกค้า
 8. `stock` — stock_lot + append-only stock_movement
 9. `production` — เครป (input lots → output lot)
 10. `factory-customer` — ลูกค้าโรงงาน

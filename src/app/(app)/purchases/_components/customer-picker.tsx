@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import type { FarmerDTO } from "@/modules/farmer/dto";
+import type { CustomerDTO } from "@/modules/customer/dto";
 import { purchaseT } from "@/modules/purchase/i18n";
 import { Input, Label } from "@/shared/ui";
 
@@ -12,7 +12,7 @@ const SEARCH_DEBOUNCE_MS = 300;
 const SEARCH_PAGE_SIZE = 20;
 const MIN_SEARCH_LENGTH = 1;
 
-type FarmerLike = Pick<FarmerDTO, "id" | "code" | "fullName" | "phone">;
+type CustomerLike = Pick<CustomerDTO, "id" | "code" | "fullName" | "phone">;
 
 type Props = {
   name?: string;
@@ -23,37 +23,41 @@ type Props = {
 };
 
 /**
- * Server-driven farmer picker.
+ * Server-driven customer picker.
  *
  * Design choices:
  * - Never preload: the page that hosts this component does NOT fetch the full
- *   farmer list. The first paint shows only an empty search field plus a hint.
- * - On each keystroke (debounced), we hit `/api/farmers?q=...&branchId=...`
+ *   customer list. The first paint shows only an empty search field plus a
+ *   hint.
+ * - On each keystroke (debounced), we hit `/api/customers?q=...&branchId=...`
  *   which already enforces branch scope, active-only, and pagination on the
  *   server. The DB never returns out-of-scope rows — even if a malicious
  *   client tampers with `branchId`, the API will respond empty.
  * - `branchId` change resets the picker (selection becomes invalid because a
- *   farmer is bound to a single branch).
+ *   customer is bound to a single branch).
  * - Stale request cancellation via `AbortController` so a slow network can't
  *   overwrite a newer typed query.
+ * - Bank-account info is intentionally NOT shown here — keeps the picker tight
+ *   for high-volume daily use. Operators see the customer's banks on the
+ *   ticket detail/edit screen.
  */
-export function FarmerPicker({
-  name = "farmerId",
+export function CustomerPicker({
+  name = "customerId",
   branchId,
   required = false,
   disabled = false,
   error,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<ReadonlyArray<FarmerLike>>([]);
-  const [selected, setSelected] = useState<FarmerLike | null>(null);
+  const [results, setResults] = useState<ReadonlyArray<CustomerLike>>([]);
+  const [selected, setSelected] = useState<CustomerLike | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Reset picker state when the branch changes — a farmer from branch A is
+  // Reset picker state when the branch changes — a customer from branch A is
   // never valid for branch B.
   useEffect(() => {
     setSelected(null);
@@ -64,7 +68,6 @@ export function FarmerPicker({
     if (abortRef.current) abortRef.current.abort();
   }, [branchId]);
 
-  // Cleanup on unmount.
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -90,7 +93,7 @@ export function FarmerPicker({
     setIsLoading(true);
     setSearchError(null);
 
-    const url = new URL("/api/farmers", window.location.origin);
+    const url = new URL("/api/customers", window.location.origin);
     url.searchParams.set("q", q.trim());
     url.searchParams.set("branchId", branchId);
     url.searchParams.set("pageSize", String(SEARCH_PAGE_SIZE));
@@ -99,18 +102,18 @@ export function FarmerPicker({
       .then(async (res) => {
         if (!res.ok) throw new Error(`status ${res.status}`);
         return res.json() as Promise<{
-          farmers: FarmerLike[];
+          customers: CustomerLike[];
           total: number;
         }>;
       })
       .then((data) => {
         if (controller.signal.aborted) return;
-        setResults(data.farmers ?? []);
+        setResults(data.customers ?? []);
       })
       .catch((err: unknown) => {
         if ((err as Error).name === "AbortError") return;
         setResults([]);
-        setSearchError(t.errors.farmerSearchFailed);
+        setSearchError(t.errors.customerSearchFailed);
       })
       .finally(() => {
         if (controller.signal.aborted) return;
@@ -124,8 +127,8 @@ export function FarmerPicker({
     debounceRef.current = setTimeout(() => runSearch(next), SEARCH_DEBOUNCE_MS);
   }
 
-  function onSelect(farmer: FarmerLike): void {
-    setSelected(farmer);
+  function onSelect(customer: CustomerLike): void {
+    setSelected(customer);
     setQuery("");
     setResults([]);
   }
@@ -136,12 +139,11 @@ export function FarmerPicker({
     setResults([]);
   }
 
-  // Selected state — show summary card + hidden input.
   if (selected) {
     return (
       <div className="flex flex-col gap-1.5">
         <Label>
-          {t.fields.farmer}
+          {t.fields.customer}
           {required ? <span className="text-red-600"> *</span> : null}
         </Label>
         <input type="hidden" name={name} value={selected.id} />
@@ -165,7 +167,7 @@ export function FarmerPicker({
             disabled={disabled}
             className="inline-flex h-8 items-center rounded-md border border-emerald-300 bg-white px-3 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-emerald-500/40 dark:bg-zinc-900 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
           >
-            {t.placeholders.farmerChange}
+            {t.placeholders.customerChange}
           </button>
         </div>
         {error ? (
@@ -177,11 +179,10 @@ export function FarmerPicker({
     );
   }
 
-  // Search state — input + result list.
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={`${name}-search`}>
-        {t.fields.farmer}
+        {t.fields.customer}
         {required ? <span className="text-red-600"> *</span> : null}
       </Label>
 
@@ -190,22 +191,22 @@ export function FarmerPicker({
         type="search"
         value={query}
         onChange={(e) => onQueryChange(e.target.value)}
-        placeholder={t.placeholders.farmerSearch}
+        placeholder={t.placeholders.customerSearch}
         disabled={disabled || !branchId}
         autoComplete="off"
       />
 
-      {/* Empty hidden input so the form still posts farmerId="" if the user
-          forgets to pick — Zod will then surface a 400 with farmerInvalid. */}
+      {/* Empty hidden input so the form still posts customerId="" if the user
+          forgets to pick — Zod will then surface a 400 with customerInvalid. */}
       <input type="hidden" name={name} value="" />
 
       {!query ? (
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          {t.placeholders.farmerSearchHint}
+          {t.placeholders.customerSearchHint}
         </p>
       ) : isLoading ? (
         <p className="rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-          {t.placeholders.farmerSearching}
+          {t.placeholders.customerSearching}
         </p>
       ) : searchError ? (
         <p
@@ -216,33 +217,33 @@ export function FarmerPicker({
         </p>
       ) : results.length === 0 ? (
         <p className="rounded-lg bg-zinc-50 px-3 py-2 text-sm text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
-          {t.placeholders.farmerNoMatches(query)}
+          {t.placeholders.customerNoMatches(query)}
         </p>
       ) : (
         <ul className="max-h-72 overflow-y-auto rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-          {results.map((f) => (
+          {results.map((c) => (
             <li
-              key={f.id}
+              key={c.id}
               className="border-b border-zinc-100 last:border-b-0 dark:border-zinc-800"
             >
               <button
                 type="button"
-                onClick={() => onSelect(f)}
+                onClick={() => onSelect(c)}
                 disabled={disabled}
                 className="flex w-full items-start gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-emerald-500/10"
               >
                 <div className="flex flex-1 flex-col">
                   <span>
                     <span className="font-mono text-emerald-700 dark:text-emerald-400">
-                      {f.code}
+                      {c.code}
                     </span>
                     <span className="ml-2 font-medium text-zinc-900 dark:text-zinc-50">
-                      {f.fullName}
+                      {c.fullName}
                     </span>
                   </span>
-                  {f.phone ? (
+                  {c.phone ? (
                     <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {f.phone}
+                      {c.phone}
                     </span>
                   ) : null}
                 </div>

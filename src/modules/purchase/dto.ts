@@ -1,7 +1,7 @@
 import type {
   AppUser,
   Branch,
-  Farmer,
+  Customer,
   PurchaseTicket,
 } from "@prisma/client";
 
@@ -13,7 +13,7 @@ export type PurchaseBranchDTO = {
   name: string;
 };
 
-export type PurchaseFarmerDTO = {
+export type PurchaseCustomerDTO = {
   id: string;
   code: string;
   fullName: string;
@@ -33,8 +33,8 @@ export type PurchaseTicketDTO = {
   id: string;
   branchId: string;
   branch: PurchaseBranchDTO | null;
-  farmerId: string;
-  farmer: PurchaseFarmerDTO | null;
+  customerId: string;
+  customer: PurchaseCustomerDTO | null;
   ticketNo: string;
   rubberType: string;
   grossWeight: string;
@@ -60,7 +60,7 @@ export type PurchaseTicketDTO = {
 
 type PurchaseWithRelations = PurchaseTicket & {
   branch?: Pick<Branch, "id" | "code" | "name"> | null;
-  farmer?: Pick<Farmer, "id" | "code" | "fullName" | "phone"> | null;
+  customer?: Pick<Customer, "id" | "code" | "fullName" | "phone"> | null;
   createdBy?: Pick<AppUser, "id" | "displayName"> | null;
   approvedBy?: Pick<AppUser, "id" | "displayName"> | null;
   cancelledBy?: Pick<AppUser, "id" | "displayName"> | null;
@@ -79,13 +79,13 @@ export function toPurchaseTicketDTO(p: PurchaseWithRelations): PurchaseTicketDTO
     branch: p.branch
       ? { id: p.branch.id, code: p.branch.code, name: p.branch.name }
       : null,
-    farmerId: p.farmerId,
-    farmer: p.farmer
+    customerId: p.customerId,
+    customer: p.customer
       ? {
-          id: p.farmer.id,
-          code: p.farmer.code,
-          fullName: p.farmer.fullName,
-          phone: p.farmer.phone,
+          id: p.customer.id,
+          code: p.customer.code,
+          fullName: p.customer.fullName,
+          phone: p.customer.phone,
         }
       : null,
     ticketNo: p.ticketNo,

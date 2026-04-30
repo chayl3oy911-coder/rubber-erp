@@ -105,7 +105,7 @@ const rubberTypeField = z
 export const createPurchaseSchema = z
   .object({
     branchId: uuid(t.errors.branchInvalid),
-    farmerId: uuid(t.errors.farmerInvalid),
+    customerId: uuid(t.errors.customerInvalid),
     rubberType: rubberTypeField,
     grossWeight: grossField,
     tareWeight: tareField.optional().default(0),
@@ -231,10 +231,10 @@ export const listPurchasesQuerySchema = z.object({
       z.string().uuid(t.errors.branchInvalid).optional(),
     )
     .optional(),
-  farmerId: z
+  customerId: z
     .preprocess(
       (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined),
-      z.string().uuid(t.errors.farmerInvalid).optional(),
+      z.string().uuid(t.errors.customerInvalid).optional(),
     )
     .optional(),
   status: z

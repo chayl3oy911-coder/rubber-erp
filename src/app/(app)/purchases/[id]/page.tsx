@@ -123,19 +123,19 @@ export default async function PurchaseDetailPage({
                 }
               />
               <DetailRow
-                label={t.fields.farmer}
+                label={t.fields.customer}
                 value={
-                  purchase.farmer ? (
+                  purchase.customer ? (
                     <span>
                       <span className="font-mono text-emerald-700 dark:text-emerald-400">
-                        {purchase.farmer.code}
+                        {purchase.customer.code}
                       </span>
                       <span className="ml-2 font-medium">
-                        {purchase.farmer.fullName}
+                        {purchase.customer.fullName}
                       </span>
-                      {purchase.farmer.phone ? (
+                      {purchase.customer.phone ? (
                         <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">
-                          {purchase.farmer.phone}
+                          {purchase.customer.phone}
                         </span>
                       ) : null}
                     </span>

@@ -128,28 +128,28 @@ const PERMISSIONS: ReadonlyArray<PermissionSeed> = [
     description: "ปิดใช้งานสาขาแบบ soft delete",
   },
   {
-    code: "farmer.create",
-    module: "farmer",
-    name: "เพิ่มเกษตรกร",
-    description: "เพิ่มเกษตรกรเข้าในระบบ",
+    code: "customer.create",
+    module: "customer",
+    name: "เพิ่มลูกค้า",
+    description: "เพิ่มลูกค้าเข้าในระบบ",
   },
   {
-    code: "farmer.read",
-    module: "farmer",
-    name: "ดูข้อมูลเกษตรกร",
-    description: "ดูข้อมูลเกษตรกร",
+    code: "customer.read",
+    module: "customer",
+    name: "ดูข้อมูลลูกค้า",
+    description: "ดูข้อมูลลูกค้า",
   },
   {
-    code: "farmer.update",
-    module: "farmer",
-    name: "แก้ไขข้อมูลเกษตรกร",
-    description: "แก้ไขข้อมูลเกษตรกร",
+    code: "customer.update",
+    module: "customer",
+    name: "แก้ไขข้อมูลลูกค้า",
+    description: "แก้ไขข้อมูลลูกค้าและบัญชีธนาคาร",
   },
   {
-    code: "farmer.delete",
-    module: "farmer",
-    name: "ปิดใช้งานเกษตรกร",
-    description: "ปิดใช้งานเกษตรกรแบบ soft delete",
+    code: "customer.delete",
+    module: "customer",
+    name: "ปิดใช้งานลูกค้า",
+    description: "ปิดใช้งานลูกค้าแบบ soft delete",
   },
   {
     code: "purchase.read",
@@ -216,7 +216,7 @@ const SUPER_ADMIN_CODE = "super_admin";
  * To revoke a baseline grant, remove it from this map AND clear the existing
  * row in `RolePermission` (the seed will not undo links on its own).
  *
- * Currently scoped to the purchase module only — branch.* / farmer.* / etc.
+ * Currently scoped to the purchase module only — branch.* / customer.* / etc.
  * will be added when their respective ownership policies are settled.
  */
 const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {

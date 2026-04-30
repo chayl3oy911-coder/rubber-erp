@@ -1,15 +1,17 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { farmerT } from "@/modules/farmer/i18n";
-import { updateFarmerSchema } from "@/modules/farmer/schemas";
+import { customerT } from "@/modules/customer/i18n";
+import { updateCustomerSchema } from "@/modules/customer/schemas";
 import {
-  FarmerCodeConflictError,
-  FarmerNotFoundError,
-  updateFarmer,
-} from "@/modules/farmer/service";
+  CustomerBankAccountConflictError,
+  CustomerBankAccountValidationError,
+  CustomerCodeConflictError,
+  CustomerNotFoundError,
+  updateCustomer,
+} from "@/modules/customer/service";
 import { apiRequirePermission } from "@/shared/auth/api";
 
-const t = farmerT();
+const t = customerT();
 
 function readClientIp(request: NextRequest): string | null {
   const fwd = request.headers.get("x-forwarded-for");
@@ -21,7 +23,7 @@ export async function PATCH(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
-  const guard = await apiRequirePermission("farmer.update");
+  const guard = await apiRequirePermission("customer.update");
   if (!guard.ok) return guard.response;
 
   const { id } = await context.params;
@@ -37,12 +39,12 @@ export async function PATCH(
   }
 
   // Defensive: even if a client sends `branchId`, drop it. Branch transfer is
-  // out of scope for this round (see plan §1).
+  // out of scope.
   if (body && typeof body === "object" && "branchId" in body) {
     delete (body as Record<string, unknown>).branchId;
   }
 
-  const parsed = updateFarmerSchema.safeParse(body);
+  const parsed = updateCustomerSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       {
@@ -54,21 +56,27 @@ export async function PATCH(
   }
 
   try {
-    const farmer = await updateFarmer(guard.user, id, parsed.data, {
+    const customer = await updateCustomer(guard.user, id, parsed.data, {
       ipAddress: readClientIp(request),
       userAgent: request.headers.get("user-agent"),
       source: "api",
     });
-    return NextResponse.json({ farmer });
+    return NextResponse.json({ customer });
   } catch (error) {
-    if (error instanceof FarmerNotFoundError) {
+    if (error instanceof CustomerNotFoundError) {
       return NextResponse.json(
         { error: error.message },
         { status: 404 },
       );
     }
-    if (error instanceof FarmerCodeConflictError) {
+    if (error instanceof CustomerCodeConflictError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof CustomerBankAccountConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof CustomerBankAccountValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     throw error;
   }

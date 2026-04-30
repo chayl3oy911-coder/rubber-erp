@@ -19,7 +19,7 @@ const paths: Record<NavIconName, React.ReactNode> = {
       <path d="M9 17h0" />
     </>
   ),
-  farmers: (
+  customers: (
     <>
       <circle cx="9" cy="8" r="3.5" />
       <path d="M3 21v-1.5a5.5 5.5 0 0 1 5.5-5.5h1a5.5 5.5 0 0 1 5.5 5.5V21" />

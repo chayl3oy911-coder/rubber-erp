@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { updateFarmerAction } from "@/modules/farmer/actions";
-import { farmerT } from "@/modules/farmer/i18n";
-import { getFarmer } from "@/modules/farmer/service";
+import { updateCustomerAction } from "@/modules/customer/actions";
+import { customerT } from "@/modules/customer/i18n";
+import { getCustomer } from "@/modules/customer/service";
 import { requirePermission } from "@/shared/auth/dal";
 import {
   Card,
@@ -13,24 +13,24 @@ import {
   CardTitle,
 } from "@/shared/ui";
 
-import { FarmerForm } from "../../_components/farmer-form";
+import { CustomerForm } from "../../_components/customer-form";
 
-const t = farmerT();
+const t = customerT();
 
-export default async function EditFarmerPage({
+export default async function EditCustomerPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const me = await requirePermission("farmer.update");
+  const me = await requirePermission("customer.update");
   const { id } = await params;
 
-  const farmer = await getFarmer(me, id);
-  if (!farmer) {
-    redirect("/farmers");
+  const customer = await getCustomer(me, id);
+  if (!customer) {
+    redirect("/customers");
   }
 
-  const action = updateFarmerAction.bind(null, farmer.id);
+  const action = updateCustomerAction.bind(null, customer.id);
 
   return (
     <div className="flex flex-col gap-5">
@@ -39,7 +39,7 @@ export default async function EditFarmerPage({
           {t.page.editTitle}
         </h1>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          {farmer.code} — {farmer.fullName}
+          {customer.code} — {customer.fullName}
         </p>
       </header>
 
@@ -48,7 +48,7 @@ export default async function EditFarmerPage({
           <CardTitle>{t.page.detailHeading}</CardTitle>
           <CardDescription>
             <Link
-              href="/farmers"
+              href="/customers"
               className="text-emerald-700 underline-offset-4 hover:underline dark:text-emerald-400"
             >
               {t.actions.back}
@@ -56,19 +56,24 @@ export default async function EditFarmerPage({
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <FarmerForm
+          <CustomerForm
             action={action}
             mode="edit"
             initialValue={{
-              code: farmer.code,
-              fullName: farmer.fullName,
-              phone: farmer.phone,
-              nationalId: farmer.nationalId,
-              bankName: farmer.bankName,
-              bankAccountNo: farmer.bankAccountNo,
-              notes: farmer.notes,
+              code: customer.code,
+              fullName: customer.fullName,
+              phone: customer.phone,
+              nationalId: customer.nationalId,
+              notes: customer.notes,
+              bankAccounts: customer.bankAccounts.map((a) => ({
+                id: a.id,
+                bankName: a.bankName,
+                bankAccountNo: a.bankAccountNo,
+                accountName: a.accountName,
+                isPrimary: a.isPrimary,
+              })),
             }}
-            lockedBranch={farmer.branch}
+            lockedBranch={customer.branch}
           />
         </CardContent>
       </Card>

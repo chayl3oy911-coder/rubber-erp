@@ -17,9 +17,9 @@ import {
 import {
   BranchNotInScopeError,
   CancelReasonRequiredError,
-  FarmerBranchMismatchError,
-  FarmerInactiveError,
-  FarmerNotFoundForPurchaseError,
+  CustomerBranchMismatchError,
+  CustomerInactiveError,
+  CustomerNotFoundForPurchaseError,
   PurchaseAutoGenError,
   PurchaseNotFoundError,
   StatusFieldsLockedError,
@@ -52,7 +52,7 @@ function emptyToUndefined(v: FormDataEntryValue | null): string | undefined {
 function collectCreateForm(formData: FormData) {
   return {
     branchId: emptyToUndefined(formData.get("branchId")),
-    farmerId: emptyToUndefined(formData.get("farmerId")),
+    customerId: emptyToUndefined(formData.get("customerId")),
     rubberType: emptyToUndefined(formData.get("rubberType")),
     grossWeight: emptyToUndefined(formData.get("grossWeight")),
     tareWeight: emptyToUndefined(formData.get("tareWeight")),
@@ -87,7 +87,7 @@ export async function createPurchaseAction(
 
   const parsed = createPurchaseSchema.safeParse({
     branchId: raw.branchId ?? "",
-    farmerId: raw.farmerId ?? "",
+    customerId: raw.customerId ?? "",
     rubberType: raw.rubberType ?? "",
     grossWeight: raw.grossWeight ?? "",
     // tareWeight and withholdingTaxPercent are optional → leave undefined
@@ -115,11 +115,11 @@ export async function createPurchaseAction(
       return { fieldErrors: { branchId: error.message }, values: raw };
     }
     if (
-      error instanceof FarmerNotFoundForPurchaseError ||
-      error instanceof FarmerBranchMismatchError ||
-      error instanceof FarmerInactiveError
+      error instanceof CustomerNotFoundForPurchaseError ||
+      error instanceof CustomerBranchMismatchError ||
+      error instanceof CustomerInactiveError
     ) {
-      return { fieldErrors: { farmerId: error.message }, values: raw };
+      return { fieldErrors: { customerId: error.message }, values: raw };
     }
     if (error instanceof PurchaseAutoGenError) {
       return { error: error.message, values: raw };

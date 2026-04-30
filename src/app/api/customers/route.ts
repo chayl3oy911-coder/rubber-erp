@@ -1,20 +1,22 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { farmerT } from "@/modules/farmer/i18n";
+import { customerT } from "@/modules/customer/i18n";
 import {
-  createFarmerSchema,
-  listFarmersQuerySchema,
-} from "@/modules/farmer/schemas";
+  createCustomerSchema,
+  listCustomersQuerySchema,
+} from "@/modules/customer/schemas";
 import {
   BranchNotInScopeError,
-  FarmerCodeAutoGenError,
-  FarmerCodeConflictError,
-  createFarmer,
-  listFarmers,
-} from "@/modules/farmer/service";
+  CustomerBankAccountConflictError,
+  CustomerBankAccountValidationError,
+  CustomerCodeAutoGenError,
+  CustomerCodeConflictError,
+  createCustomer,
+  listCustomers,
+} from "@/modules/customer/service";
 import { apiRequirePermission } from "@/shared/auth/api";
 
-const t = farmerT();
+const t = customerT();
 
 function readClientIp(request: NextRequest): string | null {
   const fwd = request.headers.get("x-forwarded-for");
@@ -23,11 +25,11 @@ function readClientIp(request: NextRequest): string | null {
 }
 
 export async function GET(request: NextRequest) {
-  const guard = await apiRequirePermission("farmer.read");
+  const guard = await apiRequirePermission("customer.read");
   if (!guard.ok) return guard.response;
 
   const url = new URL(request.url);
-  const parsed = listFarmersQuerySchema.safeParse({
+  const parsed = listCustomersQuerySchema.safeParse({
     q: url.searchParams.get("q") ?? undefined,
     branchId: url.searchParams.get("branchId") ?? undefined,
     includeInactive: url.searchParams.get("includeInactive") ?? undefined,
@@ -44,12 +46,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const result = await listFarmers(guard.user, parsed.data);
+  const result = await listCustomers(guard.user, parsed.data);
   return NextResponse.json(result);
 }
 
 export async function POST(request: NextRequest) {
-  const guard = await apiRequirePermission("farmer.create");
+  const guard = await apiRequirePermission("customer.create");
   if (!guard.ok) return guard.response;
 
   let body: unknown;
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const parsed = createFarmerSchema.safeParse(body);
+  const parsed = createCustomerSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       {
@@ -74,25 +76,30 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const farmer = await createFarmer(guard.user, parsed.data, {
+    const customer = await createCustomer(guard.user, parsed.data, {
       ipAddress: readClientIp(request),
       userAgent: request.headers.get("user-agent"),
       source: "api",
     });
-    return NextResponse.json({ farmer }, { status: 201 });
+    return NextResponse.json({ customer }, { status: 201 });
   } catch (error) {
     if (error instanceof BranchNotInScopeError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
-    if (error instanceof FarmerCodeConflictError) {
+    if (error instanceof CustomerCodeConflictError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
-    if (error instanceof FarmerCodeAutoGenError) {
+    if (error instanceof CustomerBankAccountConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof CustomerBankAccountValidationError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    if (error instanceof CustomerCodeAutoGenError) {
       // Auto-gen retries exhausted because every attempt collided with a
       // concurrent insert — semantically a conflict, not a service outage.
       return NextResponse.json({ error: error.message }, { status: 409 });
     }
-    // Anything else falls through and Next.js returns 500 by default.
     throw error;
   }
 }

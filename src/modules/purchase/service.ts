@@ -56,24 +56,24 @@ export class BranchNotInScopeError extends Error {
   }
 }
 
-export class FarmerInactiveError extends Error {
+export class CustomerInactiveError extends Error {
   constructor() {
-    super(t.errors.farmerInactive);
-    this.name = "FarmerInactiveError";
+    super(t.errors.customerInactive);
+    this.name = "CustomerInactiveError";
   }
 }
 
-export class FarmerBranchMismatchError extends Error {
+export class CustomerBranchMismatchError extends Error {
   constructor() {
-    super(t.errors.farmerBranchMismatch);
-    this.name = "FarmerBranchMismatchError";
+    super(t.errors.customerBranchMismatch);
+    this.name = "CustomerBranchMismatchError";
   }
 }
 
-export class FarmerNotFoundForPurchaseError extends Error {
+export class CustomerNotFoundForPurchaseError extends Error {
   constructor() {
-    super(t.errors.farmerInvalid);
-    this.name = "FarmerNotFoundForPurchaseError";
+    super(t.errors.customerInvalid);
+    this.name = "CustomerNotFoundForPurchaseError";
   }
 }
 
@@ -111,7 +111,7 @@ export type AuditMeta = {
 function snapshot(p: PurchaseTicket): Prisma.InputJsonValue {
   return {
     branchId: p.branchId,
-    farmerId: p.farmerId,
+    customerId: p.customerId,
     ticketNo: p.ticketNo,
     rubberType: p.rubberType,
     grossWeight: p.grossWeight.toString(),
@@ -146,7 +146,7 @@ function buildAuditMetadata(
 
 const PURCHASE_INCLUDE = {
   branch: { select: { id: true, code: true, name: true } },
-  farmer: {
+  customer: {
     select: { id: true, code: true, fullName: true, phone: true },
   },
   createdBy: { select: { id: true, displayName: true } },
@@ -242,7 +242,7 @@ const CREATE_RETRY_LIMIT = 5;
 export type ListPurchasesOptions = {
   q?: string;
   branchId?: string;
-  farmerId?: string;
+  customerId?: string;
   status?: ReadonlyArray<PurchaseStatus>;
   dateFrom?: string;
   dateTo?: string;
@@ -285,8 +285,8 @@ export async function listPurchases(
     where.branchId = opts.branchId;
   }
 
-  if (opts.farmerId) {
-    where.farmerId = opts.farmerId;
+  if (opts.customerId) {
+    where.customerId = opts.customerId;
   }
 
   if (opts.status && opts.status.length > 0) {
@@ -311,7 +311,7 @@ export async function listPurchases(
       where.OR = [
         { ticketNo: { contains: q, mode: "insensitive" } },
         {
-          farmer: {
+          customer: {
             is: {
               OR: [
                 { code: { contains: q, mode: "insensitive" } },
@@ -367,18 +367,18 @@ export async function createPurchase(
 ): Promise<PurchaseTicketDTO> {
   ensureBranchInScope(actor, input.branchId);
 
-  // Validate farmer up-front (cheap query, gives a precise error class). We
-  // re-validate inside the transaction in case of TOCTOU, but the early check
-  // gives a friendlier 400/404 response.
-  const farmer = await prisma.farmer.findUnique({
-    where: { id: input.farmerId },
+  // Validate customer up-front (cheap query, gives a precise error class).
+  // We re-validate inside the transaction in case of TOCTOU, but the early
+  // check gives a friendlier 400/404 response.
+  const customer = await prisma.customer.findUnique({
+    where: { id: input.customerId },
     select: { id: true, branchId: true, isActive: true },
   });
-  if (!farmer) throw new FarmerNotFoundForPurchaseError();
-  if (farmer.branchId !== input.branchId) {
-    throw new FarmerBranchMismatchError();
+  if (!customer) throw new CustomerNotFoundForPurchaseError();
+  if (customer.branchId !== input.branchId) {
+    throw new CustomerBranchMismatchError();
   }
-  if (!farmer.isActive) throw new FarmerInactiveError();
+  if (!customer.isActive) throw new CustomerInactiveError();
 
   const tareInput = input.tareWeight ?? 0;
   const percentInput = input.withholdingTaxPercent ?? 0;
@@ -397,7 +397,7 @@ export async function createPurchase(
         const ticket = await tx.purchaseTicket.create({
           data: {
             branchId: input.branchId,
-            farmerId: input.farmerId,
+            customerId: input.customerId,
             ticketNo,
             rubberType: input.rubberType,
             grossWeight: new Prisma.Decimal(input.grossWeight),

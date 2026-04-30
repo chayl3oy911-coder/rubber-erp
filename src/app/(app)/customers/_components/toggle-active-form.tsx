@@ -1,16 +1,20 @@
-import { toggleFarmerActiveAction } from "@/modules/farmer/actions";
-import { farmerT } from "@/modules/farmer/i18n";
+import { toggleCustomerActiveAction } from "@/modules/customer/actions";
+import { customerT } from "@/modules/customer/i18n";
 
-const t = farmerT();
+const t = customerT();
 
 type Props = {
-  farmerId: string;
+  customerId: string;
   isActive: boolean;
   compact?: boolean;
 };
 
-export function ToggleActiveForm({ farmerId, isActive, compact = false }: Props) {
-  const action = toggleFarmerActiveAction.bind(null, farmerId, !isActive);
+export function ToggleActiveForm({
+  customerId,
+  isActive,
+  compact = false,
+}: Props) {
+  const action = toggleCustomerActiveAction.bind(null, customerId, !isActive);
 
   const sizeCls = compact ? "h-8 px-3 text-xs" : "h-9 px-3 text-sm";
   const colorCls = isActive

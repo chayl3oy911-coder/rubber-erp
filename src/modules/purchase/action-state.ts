@@ -7,7 +7,7 @@
 
 export type PurchaseFieldKey =
   | "branchId"
-  | "farmerId"
+  | "customerId"
   | "rubberType"
   | "grossWeight"
   | "tareWeight"

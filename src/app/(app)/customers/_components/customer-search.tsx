@@ -3,16 +3,16 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
-import { farmerT } from "@/modules/farmer/i18n";
+import { customerT } from "@/modules/customer/i18n";
 import { Input } from "@/shared/ui";
 
-const t = farmerT();
+const t = customerT();
 
 type Props = {
   initialQ?: string;
 };
 
-export function FarmerSearch({ initialQ = "" }: Props) {
+export function CustomerSearch({ initialQ = "" }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [value, setValue] = useState(initialQ);
@@ -33,7 +33,7 @@ export function FarmerSearch({ initialQ = "" }: Props) {
     // an empty page when their previous offset overflows the new result set.
     params.delete("page");
     const qs = params.toString();
-    router.replace(qs ? `/farmers?${qs}` : "/farmers");
+    router.replace(qs ? `/customers?${qs}` : "/customers");
   }
 
   function onChange(next: string): void {

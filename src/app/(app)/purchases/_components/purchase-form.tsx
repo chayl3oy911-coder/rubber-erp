@@ -11,7 +11,7 @@ import { RUBBER_TYPES } from "@/modules/purchase/rubber-types";
 import { getEditableFields, type PurchaseStatus } from "@/modules/purchase/status";
 import { Button, Input, Label } from "@/shared/ui";
 
-import { FarmerPicker } from "./farmer-picker";
+import { CustomerPicker } from "./customer-picker";
 
 const t = purchaseT();
 
@@ -154,11 +154,11 @@ function CreateForm({
         </div>
       ) : null}
 
-      <FarmerPicker
+      <CustomerPicker
         branchId={branchId}
         required
         disabled={pending || !branchId}
-        error={state.fieldErrors?.farmerId}
+        error={state.fieldErrors?.customerId}
       />
 
       <div className="flex flex-col gap-1.5">

@@ -74,7 +74,7 @@ export default async function PurchasesPage({
   const parsed = listPurchasesQuerySchema.safeParse({
     q: pickString(sp, "q"),
     branchId: pickString(sp, "branchId"),
-    farmerId: pickString(sp, "farmerId"),
+    customerId: pickString(sp, "customerId"),
     status: pickString(sp, "status"),
     dateFrom: pickString(sp, "dateFrom"),
     dateTo: pickString(sp, "dateTo"),
@@ -89,7 +89,7 @@ export default async function PurchasesPage({
     : {
         q: undefined,
         branchId: undefined,
-        farmerId: undefined,
+        customerId: undefined,
         status: undefined,
         dateFrom: undefined,
         dateTo: undefined,

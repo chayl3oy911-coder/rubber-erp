@@ -7,9 +7,9 @@ import {
 } from "@/modules/purchase/schemas";
 import {
   BranchNotInScopeError,
-  FarmerBranchMismatchError,
-  FarmerInactiveError,
-  FarmerNotFoundForPurchaseError,
+  CustomerBranchMismatchError,
+  CustomerInactiveError,
+  CustomerNotFoundForPurchaseError,
   PurchaseAutoGenError,
   createPurchase,
   listPurchases,
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
   const parsed = listPurchasesQuerySchema.safeParse({
     q: url.searchParams.get("q") ?? undefined,
     branchId: url.searchParams.get("branchId") ?? undefined,
-    farmerId: url.searchParams.get("farmerId") ?? undefined,
+    customerId: url.searchParams.get("customerId") ?? undefined,
     status: url.searchParams.get("status") ?? undefined,
     dateFrom: url.searchParams.get("dateFrom") ?? undefined,
     dateTo: url.searchParams.get("dateTo") ?? undefined,
@@ -94,14 +94,14 @@ export async function POST(request: NextRequest) {
     if (error instanceof BranchNotInScopeError) {
       return NextResponse.json({ error: error.message }, { status: 403 });
     }
-    if (error instanceof FarmerNotFoundForPurchaseError) {
-      // Farmer id given but doesn't exist anywhere — distinct from "exists
-      // but in another branch", which is a 400 (logical conflict).
+    if (error instanceof CustomerNotFoundForPurchaseError) {
+      // Customer id given but doesn't exist anywhere — distinct from
+      // "exists but in another branch", which is a 400 (logical conflict).
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
     if (
-      error instanceof FarmerBranchMismatchError ||
-      error instanceof FarmerInactiveError
+      error instanceof CustomerBranchMismatchError ||
+      error instanceof CustomerInactiveError
     ) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

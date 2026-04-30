@@ -1,7 +1,7 @@
 /**
  * Purchase module — module-local i18n dictionary.
  *
- * Mirrors the pattern used in the Farmer module: every UI string lives here
+ * Mirrors the pattern used in the Customer module: every UI string lives here
  * so we never hardcode in components/services. Default locale is Thai. When
  * full app-wide i18n lands we can swap `purchaseT()` for the framework's
  * `t()` and re-key the entries — components stay untouched.
@@ -33,7 +33,7 @@ type PurchaseDict = {
   fields: {
     ticketNo: string;
     branch: string;
-    farmer: string;
+    customer: string;
     rubberType: string;
     grossWeight: string;
     tareWeight: string;
@@ -75,13 +75,13 @@ type PurchaseDict = {
   };
   placeholders: {
     selectBranch: string;
-    selectFarmer: string;
+    selectCustomer: string;
     selectRubberType: string;
-    farmerSearch: string;
-    farmerSearchHint: string;
-    farmerNoMatches: (q: string) => string;
-    farmerSearching: string;
-    farmerChange: string;
+    customerSearch: string;
+    customerSearchHint: string;
+    customerNoMatches: (q: string) => string;
+    customerSearching: string;
+    customerChange: string;
     note: string;
     cancelReason: string;
     listSearch: string;
@@ -110,11 +110,11 @@ type PurchaseDict = {
   errors: {
     invalidJson: string;
     validation: string;
-    farmerRequired: string;
-    farmerInvalid: string;
-    farmerInactive: string;
-    farmerBranchMismatch: string;
-    farmerSearchFailed: string;
+    customerRequired: string;
+    customerInvalid: string;
+    customerInactive: string;
+    customerBranchMismatch: string;
+    customerSearchFailed: string;
     rubberTypeRequired: string;
     rubberTypeInvalid: string;
     grossPositive: string;
@@ -146,7 +146,7 @@ type PurchaseDict = {
     list: string;
     noResults: (q: string) => string;
     noBranches: string;
-    noFarmersInBranch: string;
+    noCustomersInBranch: string;
   };
   status: StatusDict;
   badge: {
@@ -183,7 +183,7 @@ const TH: PurchaseDict = {
   fields: {
     ticketNo: "เลขที่ใบรับซื้อ",
     branch: "สาขา",
-    farmer: "เกษตรกร",
+    customer: "ลูกค้า",
     rubberType: "ชนิดยาง",
     grossWeight: "น้ำหนักรวม (Gross)",
     tareWeight: "น้ำหนักภาชนะ (Tare)",
@@ -226,16 +226,16 @@ const TH: PurchaseDict = {
   },
   placeholders: {
     selectBranch: "— เลือกสาขา —",
-    selectFarmer: "— เลือกเกษตรกร —",
+    selectCustomer: "— เลือกลูกค้า —",
     selectRubberType: "— เลือกชนิดยาง —",
-    farmerSearch: "ค้นหา รหัส / ชื่อ / เบอร์",
-    farmerSearchHint: "พิมพ์อย่างน้อย 1 ตัวอักษรเพื่อค้นหาเกษตรกร",
-    farmerNoMatches: (q) => `ไม่พบเกษตรกรที่ตรงกับ "${q}"`,
-    farmerSearching: "กำลังค้นหา...",
-    farmerChange: "เปลี่ยน",
+    customerSearch: "ค้นหา รหัส / ชื่อ / เบอร์",
+    customerSearchHint: "พิมพ์อย่างน้อย 1 ตัวอักษรเพื่อค้นหาลูกค้า",
+    customerNoMatches: (q) => `ไม่พบลูกค้าที่ตรงกับ "${q}"`,
+    customerSearching: "กำลังค้นหา...",
+    customerChange: "เปลี่ยน",
     note: "บันทึกเพิ่มเติม (ถ้ามี)",
     cancelReason: "ระบุเหตุผลในการยกเลิก",
-    listSearch: "ค้นหา เลขที่ / รหัสเกษตรกร / ชื่อเกษตรกร",
+    listSearch: "ค้นหา เลขที่ / รหัสลูกค้า / ชื่อลูกค้า",
     selectStatus: "ทุกสถานะ",
   },
   actions: {
@@ -261,11 +261,11 @@ const TH: PurchaseDict = {
   errors: {
     invalidJson: "รูปแบบข้อมูลไม่ถูกต้อง",
     validation: "ข้อมูลไม่ถูกต้อง",
-    farmerRequired: "กรุณาเลือกเกษตรกร",
-    farmerInvalid: "ข้อมูลเกษตรกรไม่ถูกต้อง",
-    farmerInactive: "เกษตรกรนี้ถูกปิดใช้งาน ห้ามใช้สร้างใบใหม่",
-    farmerBranchMismatch: "เกษตรกรไม่อยู่ในสาขาเดียวกับใบรับซื้อ",
-    farmerSearchFailed: "ค้นหาเกษตรกรไม่สำเร็จ ลองอีกครั้ง",
+    customerRequired: "กรุณาเลือกลูกค้า",
+    customerInvalid: "ข้อมูลลูกค้าไม่ถูกต้อง",
+    customerInactive: "ลูกค้านี้ถูกปิดใช้งาน ห้ามใช้สร้างใบใหม่",
+    customerBranchMismatch: "ลูกค้าไม่อยู่ในสาขาเดียวกับใบรับซื้อ",
+    customerSearchFailed: "ค้นหาลูกค้าไม่สำเร็จ ลองอีกครั้ง",
     rubberTypeRequired: "กรุณาเลือกชนิดยาง",
     rubberTypeInvalid: "ชนิดยางไม่ถูกต้อง",
     grossPositive: "น้ำหนัก Gross ต้องมากกว่า 0",
@@ -299,7 +299,7 @@ const TH: PurchaseDict = {
     list: "ยังไม่มีใบรับซื้อในระบบ",
     noResults: (q) => `ไม่พบใบรับซื้อที่ตรงกับ "${q}"`,
     noBranches: "บัญชีของคุณยังไม่ได้ผูกสาขา ติดต่อผู้ดูแลระบบ",
-    noFarmersInBranch: "ยังไม่มีเกษตรกรที่ใช้งานอยู่ในสาขานี้",
+    noCustomersInBranch: "ยังไม่มีลูกค้าที่ใช้งานอยู่ในสาขานี้",
   },
   status: {
     DRAFT: "ร่าง",
@@ -344,7 +344,7 @@ const EN: PurchaseDict = {
   fields: {
     ticketNo: "Ticket #",
     branch: "Branch",
-    farmer: "Farmer",
+    customer: "Customer",
     rubberType: "Rubber Type",
     grossWeight: "Gross Weight",
     tareWeight: "Tare Weight",
@@ -381,22 +381,22 @@ const EN: PurchaseDict = {
     priceDecimals: "Up to 4 decimal places",
     percentDecimals: "Between 0–100, up to 2 decimal places",
     tareOptional: "Optional — defaults to 0 if blank",
-    withholdingDefault0: "Defaults to 0% (farmers exempt from withholding)",
+    withholdingDefault0: "Defaults to 0% (customers exempt from withholding)",
     statusLockedFields: (status) =>
       `In status "${status}" weight/price/tax fields are locked`,
   },
   placeholders: {
     selectBranch: "— Select branch —",
-    selectFarmer: "— Select farmer —",
+    selectCustomer: "— Select customer —",
     selectRubberType: "— Select rubber type —",
-    farmerSearch: "Search code / name / phone",
-    farmerSearchHint: "Type at least 1 character to search farmers",
-    farmerNoMatches: (q) => `No farmers match "${q}"`,
-    farmerSearching: "Searching...",
-    farmerChange: "Change",
+    customerSearch: "Search code / name / phone",
+    customerSearchHint: "Type at least 1 character to search customers",
+    customerNoMatches: (q) => `No customers match "${q}"`,
+    customerSearching: "Searching...",
+    customerChange: "Change",
     note: "Optional note",
     cancelReason: "Reason for cancellation",
-    listSearch: "Search ticket # / farmer code / farmer name",
+    listSearch: "Search ticket # / customer code / customer name",
     selectStatus: "All statuses",
   },
   actions: {
@@ -422,11 +422,11 @@ const EN: PurchaseDict = {
   errors: {
     invalidJson: "Invalid request body",
     validation: "Invalid input",
-    farmerRequired: "Please select a farmer",
-    farmerInvalid: "Invalid farmer",
-    farmerInactive: "Farmer is inactive — cannot create new tickets",
-    farmerBranchMismatch: "Farmer does not belong to the selected branch",
-    farmerSearchFailed: "Farmer search failed — please retry",
+    customerRequired: "Please select a customer",
+    customerInvalid: "Invalid customer",
+    customerInactive: "Customer is inactive — cannot create new tickets",
+    customerBranchMismatch: "Customer does not belong to the selected branch",
+    customerSearchFailed: "Customer search failed — please retry",
     rubberTypeRequired: "Please select a rubber type",
     rubberTypeInvalid: "Invalid rubber type",
     grossPositive: "Gross weight must be greater than 0",
@@ -461,7 +461,7 @@ const EN: PurchaseDict = {
     list: "No purchase tickets yet",
     noResults: (q) => `No tickets match "${q}"`,
     noBranches: "Your account has no branch assigned. Contact admin.",
-    noFarmersInBranch: "No active farmers in this branch yet",
+    noCustomersInBranch: "No active customers in this branch yet",
   },
   status: {
     DRAFT: "Draft",

@@ -17,7 +17,7 @@ export default async function NewPurchasePage() {
   const me = await requirePermission("purchase.create");
 
   // Branches available to the actor (super admin = all active; users = scoped).
-  // We intentionally do NOT preload farmers — the picker queries `/api/farmers`
+  // We intentionally do NOT preload customers — the picker queries `/api/customers`
   // on demand to handle large datasets without blowing up the initial payload.
   const branches = await listBranches(me);
 

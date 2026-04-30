@@ -115,7 +115,7 @@ model Branch {
   updatedAt DateTime @updatedAt
 
   userBranches    UserBranch[]
-  farmers         Farmer[]
+  customers       Customer[]
   purchaseTickets PurchaseTicket[]
   auditLogs       AuditLog[]
 }
@@ -139,25 +139,58 @@ model UserBranch {
 
 // ─── Master Data ─────────────────────────────────────────────────────────────
 
-model Farmer {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  branchId      String   @db.Uuid
-  code          String
-  fullName      String
-  phone         String?
-  nationalId    String?
-  bankName      String?
-  bankAccountNo String?
-  notes         String?
-  isActive      Boolean  @default(true)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+// ─── Customer ────────────────────────────────────────────────────────────────
+//
+// Trading partners we *buy raw rubber from* (formerly "Farmer"). The new name
+// reflects business reality: counterparts include farmers, dealers, middlemen,
+// and cooperatives. Bank accounts moved to a dedicated table because a single
+// customer may now have up to 3 of them.
 
-  branch          Branch           @relation(fields: [branchId], references: [id])
+model Customer {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId   String   @db.Uuid
+  code       String
+  fullName   String
+  phone      String?
+  nationalId String?
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  branch          Branch                @relation(fields: [branchId], references: [id])
+  bankAccounts    CustomerBankAccount[]
   purchaseTickets PurchaseTicket[]
 
   @@unique([branchId, code])
   @@index([branchId])
+}
+
+// 1 customer ≤ 3 active bank accounts (enforced in service layer + transaction).
+// Exactly one row may have isPrimary=true per customer (also service-enforced
+// because Postgres partial unique indexes aren't expressible via Prisma's
+// `@@unique`; we may add a raw-SQL CREATE UNIQUE INDEX later if scale demands).
+//
+// `@@unique([bankName, bankAccountNo])` is GLOBAL and prevents accidental
+// duplicate-customer creation when the same person is re-entered: the second
+// insert collides on this unique key (caught as P2002) and we surface a
+// "duplicate bank account" error pointing the operator at the existing
+// customer.
+model CustomerBankAccount {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId    String   @db.Uuid
+  bankName      String
+  bankAccountNo String
+  accountName   String?
+  isPrimary     Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([bankName, bankAccountNo])
+  @@index([customerId])
 }
 
 // ─── Purchase ────────────────────────────────────────────────────────────────
@@ -181,7 +214,7 @@ model Farmer {
 model PurchaseTicket {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   branchId      String   @db.Uuid
-  farmerId      String   @db.Uuid
+  customerId    String   @db.Uuid
   ticketNo      String
 
   rubberType    String
@@ -216,7 +249,7 @@ model PurchaseTicket {
   createdById   String   @db.Uuid
 
   branch      Branch   @relation(fields: [branchId], references: [id])
-  farmer      Farmer   @relation(fields: [farmerId], references: [id])
+  customer    Customer @relation(fields: [customerId], references: [id])
   createdBy   AppUser  @relation("PurchaseCreator", fields: [createdById], references: [id])
   approvedBy  AppUser? @relation("PurchaseApprover", fields: [approvedById], references: [id])
   cancelledBy AppUser? @relation("PurchaseCanceller", fields: [cancelledById], references: [id])
@@ -224,7 +257,7 @@ model PurchaseTicket {
   @@unique([branchId, ticketNo])
   @@index([branchId, status])
   @@index([branchId, createdAt])
-  @@index([farmerId])
+  @@index([customerId])
 }
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

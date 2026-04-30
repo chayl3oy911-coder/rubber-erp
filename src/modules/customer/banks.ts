@@ -1,7 +1,8 @@
 /**
- * Farmer module — bank registry.
+ * Customer module — bank registry.
  *
- * Source of truth for the bank dropdown and DB-stored bank values.
+ * Source of truth for the bank dropdown and DB-stored bank values used by
+ * `CustomerBankAccount`.
  *
  * Storage strategy: we persist the stable `code` (e.g. "KBANK") rather than
  * a localized display name. Labels are looked up from this list at render
@@ -11,15 +12,15 @@
  * of the array — order is preserved in the dropdown.
  */
 
-import type { FarmerLocale } from "./i18n";
+import type { CustomerLocale } from "./i18n";
 
-export type FarmerBank = {
+export type CustomerBank = {
   readonly code: string;
   readonly th: string;
   readonly en: string;
 };
 
-export const FARMER_BANKS: ReadonlyArray<FarmerBank> = [
+export const CUSTOMER_BANKS: ReadonlyArray<CustomerBank> = [
   { code: "KBANK", th: "กสิกรไทย", en: "Kasikornbank" },
   { code: "BBL", th: "กรุงเทพ", en: "Bangkok Bank" },
   { code: "KTB", th: "กรุงไทย", en: "Krungthai" },
@@ -43,26 +44,20 @@ export const FARMER_BANKS: ReadonlyArray<FarmerBank> = [
   { code: "ICBC", th: "ไอซีบีซี", en: "ICBC" },
 ] as const;
 
-export const FARMER_BANK_CODES: ReadonlySet<string> = new Set(
-  FARMER_BANKS.map((b) => b.code),
+export const CUSTOMER_BANK_CODES: ReadonlySet<string> = new Set(
+  CUSTOMER_BANKS.map((b) => b.code),
 );
 
-export function isFarmerBankCode(value: string): boolean {
-  return FARMER_BANK_CODES.has(value);
+export function isCustomerBankCode(value: string): boolean {
+  return CUSTOMER_BANK_CODES.has(value);
 }
 
-/**
- * Resolve a stored bank code to a localized label.
- *
- * Returns `null` for empty input. Falls back to the raw code when an unknown
- * value is encountered (e.g. legacy data) so we never throw or render blank.
- */
-export function farmerBankLabel(
+export function customerBankLabel(
   code: string | null | undefined,
-  locale: FarmerLocale = "th",
+  locale: CustomerLocale = "th",
 ): string | null {
   if (!code) return null;
-  const bank = FARMER_BANKS.find((b) => b.code === code);
+  const bank = CUSTOMER_BANKS.find((b) => b.code === code);
   if (!bank) return code;
   return locale === "en" ? bank.en : bank.th;
 }

@@ -9,7 +9,7 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const PROTECTED_PREFIXES = [
     "/dashboard",
     "/branches",
-    "/farmers",
+    "/customers",
     "/purchases",
   ];
   const needsAuth = PROTECTED_PREFIXES.some(

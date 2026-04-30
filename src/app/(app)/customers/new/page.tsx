@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 import { listBranches } from "@/modules/branch/service";
-import { createFarmerAction } from "@/modules/farmer/actions";
-import { farmerT } from "@/modules/farmer/i18n";
+import { createCustomerAction } from "@/modules/customer/actions";
+import { customerT } from "@/modules/customer/i18n";
 import { requirePermission } from "@/shared/auth/dal";
 import {
   Card,
@@ -12,15 +12,13 @@ import {
   CardTitle,
 } from "@/shared/ui";
 
-import { FarmerForm } from "../_components/farmer-form";
+import { CustomerForm } from "../_components/customer-form";
 
-const t = farmerT();
+const t = customerT();
 
-export default async function NewFarmerPage() {
-  const me = await requirePermission("farmer.create");
+export default async function NewCustomerPage() {
+  const me = await requirePermission("customer.create");
 
-  // Branches the user can write to. Super admin → all active branches;
-  // otherwise → user's active branches (already filtered by listBranches).
   const allBranches = await listBranches(me);
 
   return (
@@ -39,7 +37,7 @@ export default async function NewFarmerPage() {
           <CardTitle>{t.page.detailHeading}</CardTitle>
           <CardDescription>
             <Link
-              href="/farmers"
+              href="/customers"
               className="text-emerald-700 underline-offset-4 hover:underline dark:text-emerald-400"
             >
               {t.actions.back}
@@ -52,8 +50,8 @@ export default async function NewFarmerPage() {
               {t.empty.noBranches}
             </p>
           ) : (
-            <FarmerForm
-              action={createFarmerAction}
+            <CustomerForm
+              action={createCustomerAction}
               mode="create"
               availableBranches={allBranches.map((b) => ({
                 id: b.id,

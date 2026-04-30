@@ -67,10 +67,10 @@ export function PurchaseList({
                       {p.ticketNo}
                     </span>
                     <span className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-                      {p.farmer?.fullName ?? "—"}
+                      {p.customer?.fullName ?? "—"}
                     </span>
                     <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {p.farmer?.code ?? "—"}
+                      {p.customer?.code ?? "—"}
                       {showBranchColumn && p.branch
                         ? ` · ${p.branch.code}`
                         : ""}
@@ -88,7 +88,7 @@ export function PurchaseList({
                   <div className="flex justify-between">
                     <dt>{t.fields.netWeight}</dt>
                     <dd>
-                      {formatNumber(p.netWeight, 3)} {t.units.kg}
+                      {formatNumber(p.netWeight, 2)} {t.units.kg}
                     </dd>
                   </div>
                   <div className="flex justify-between font-semibold text-zinc-900 dark:text-zinc-50">
@@ -120,7 +120,7 @@ export function PurchaseList({
                     {t.fields.branch}
                   </th>
                 ) : null}
-                <th className="px-4 py-3">{t.fields.farmer}</th>
+                <th className="px-4 py-3">{t.fields.customer}</th>
                 <th className="hidden px-4 py-3 md:table-cell">
                   {t.fields.rubberType}
                 </th>
@@ -154,11 +154,11 @@ export function PurchaseList({
                   <td className="px-4 py-3 text-zinc-900 dark:text-zinc-50">
                     <div className="flex flex-col">
                       <span className="font-medium">
-                        {p.farmer?.fullName ?? "—"}
+                        {p.customer?.fullName ?? "—"}
                       </span>
-                      {p.farmer ? (
+                      {p.customer ? (
                         <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {p.farmer.code}
+                          {p.customer.code}
                         </span>
                       ) : null}
                     </div>
@@ -167,7 +167,7 @@ export function PurchaseList({
                     {rubberTypeLabel(p.rubberType) ?? p.rubberType}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {formatNumber(p.netWeight, 3)}
+                    {formatNumber(p.netWeight, 2)}
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
                     {formatNumber(p.totalAmount, 2)}

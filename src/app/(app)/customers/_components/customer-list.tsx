@@ -1,13 +1,13 @@
 import Link from "next/link";
 
-import { farmerBankLabel } from "@/modules/farmer/banks";
-import type { FarmerDTO } from "@/modules/farmer/dto";
-import { farmerT } from "@/modules/farmer/i18n";
+import type { CustomerDTO } from "@/modules/customer/dto";
+import { customerT } from "@/modules/customer/i18n";
 import { Card, CardContent } from "@/shared/ui";
 
+import { BankAccountsCell } from "./bank-accounts-cell";
 import { ToggleActiveForm } from "./toggle-active-form";
 
-const t = farmerT();
+const t = customerT();
 
 function badgeClass(active: boolean): string {
   return active
@@ -22,24 +22,21 @@ const editLinkCompactClass =
   "inline-flex h-8 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-xs font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
 
 type Props = {
-  farmers: FarmerDTO[];
+  customers: CustomerDTO[];
   canEdit: boolean;
   canToggle: boolean;
-  /** When set, indicates the list is empty due to a search rather than no data. */
   searchTerm?: string;
-  /** When true, the (super-admin or multi-branch) viewer benefits from
-   *  seeing branch column. Single-branch users don't need it. */
   showBranchColumn?: boolean;
 };
 
-export function FarmerList({
-  farmers,
+export function CustomerList({
+  customers,
   canEdit,
   canToggle,
   searchTerm,
   showBranchColumn = true,
 }: Props) {
-  if (farmers.length === 0) {
+  if (customers.length === 0) {
     return (
       <Card>
         <CardContent className="py-10 text-center text-sm text-zinc-500 dark:text-zinc-400">
@@ -52,63 +49,61 @@ export function FarmerList({
   return (
     <>
       <ul className="flex flex-col gap-3 sm:hidden">
-        {farmers.map((f) => (
-          <li key={f.id}>
+        {customers.map((c) => (
+          <li key={c.id}>
             <Card>
               <CardContent className="flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex flex-col gap-0.5">
                     <span className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                      {f.code}
+                      {c.code}
                     </span>
                     <span className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
-                      {f.fullName}
+                      {c.fullName}
                     </span>
-                    {showBranchColumn && f.branch ? (
+                    {showBranchColumn && c.branch ? (
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                        {t.fields.branch}: {f.branch.code} – {f.branch.name}
+                        {t.fields.branch}: {c.branch.code} – {c.branch.name}
                       </span>
                     ) : null}
                   </div>
-                  <span className={badgeClass(f.isActive)}>
-                    {f.isActive ? t.badge.active : t.badge.inactive}
+                  <span className={badgeClass(c.isActive)}>
+                    {c.isActive ? t.badge.active : t.badge.inactive}
                   </span>
                 </div>
-                {f.phone || f.bankName ? (
-                  <dl className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
-                    {f.phone ? (
-                      <div>
-                        <dt className="inline text-zinc-500 dark:text-zinc-500">
-                          {t.fields.phone}:{" "}
-                        </dt>
-                        <dd className="inline">{f.phone}</dd>
-                      </div>
-                    ) : null}
-                    {f.bankName ? (
-                      <div>
-                        <dt className="inline text-zinc-500 dark:text-zinc-500">
-                          {t.fields.bankName}:{" "}
-                        </dt>
-                        <dd className="inline">
-                          {farmerBankLabel(f.bankName)}
-                          {f.bankAccountNo ? ` · ${f.bankAccountNo}` : ""}
-                        </dd>
-                      </div>
-                    ) : null}
-                  </dl>
-                ) : null}
+                <dl className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
+                  {c.phone ? (
+                    <div>
+                      <dt className="inline text-zinc-500 dark:text-zinc-500">
+                        {t.fields.phone}:{" "}
+                      </dt>
+                      <dd className="inline">{c.phone}</dd>
+                    </div>
+                  ) : null}
+                  <div>
+                    <dt className="text-zinc-500 dark:text-zinc-500">
+                      {t.fields.bankAccounts}
+                    </dt>
+                    <dd className="mt-0.5">
+                      <BankAccountsCell accounts={c.bankAccounts} />
+                    </dd>
+                  </div>
+                </dl>
                 {(canEdit || canToggle) && (
                   <div className="flex flex-wrap gap-2 pt-1">
                     {canEdit ? (
                       <Link
-                        href={`/farmers/${f.id}/edit`}
+                        href={`/customers/${c.id}/edit`}
                         className={editLinkClass}
                       >
                         {t.actions.edit}
                       </Link>
                     ) : null}
                     {canToggle ? (
-                      <ToggleActiveForm farmerId={f.id} isActive={f.isActive} />
+                      <ToggleActiveForm
+                        customerId={c.id}
+                        isActive={c.isActive}
+                      />
                     ) : null}
                   </div>
                 )}
@@ -133,48 +128,44 @@ export function FarmerList({
                 <th className="hidden px-4 py-3 md:table-cell">
                   {t.fields.phone}
                 </th>
-                <th className="hidden px-4 py-3 xl:table-cell">
-                  {t.fields.bankName}
-                </th>
+                <th className="px-4 py-3">{t.fields.bankAccounts}</th>
                 <th className="px-4 py-3">{t.fields.status}</th>
                 <th className="px-4 py-3 text-right">{t.fields.actions}</th>
               </tr>
             </thead>
             <tbody>
-              {farmers.map((f) => (
+              {customers.map((c) => (
                 <tr
-                  key={f.id}
-                  className="border-t border-zinc-200 dark:border-zinc-800"
+                  key={c.id}
+                  className="border-t border-zinc-200 align-top dark:border-zinc-800"
                 >
                   <td className="px-4 py-3 font-medium text-emerald-700 dark:text-emerald-400">
-                    {f.code}
+                    {c.code}
                   </td>
                   <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-50">
-                    {f.fullName}
+                    {c.fullName}
                   </td>
                   {showBranchColumn ? (
                     <td className="hidden px-4 py-3 text-zinc-600 lg:table-cell dark:text-zinc-400">
-                      {f.branch ? `${f.branch.code} – ${f.branch.name}` : "—"}
+                      {c.branch ? `${c.branch.code} – ${c.branch.name}` : "—"}
                     </td>
                   ) : null}
                   <td className="hidden px-4 py-3 text-zinc-600 md:table-cell dark:text-zinc-400">
-                    {f.phone ?? "—"}
+                    {c.phone ?? "—"}
                   </td>
-                  <td className="hidden px-4 py-3 text-zinc-600 xl:table-cell dark:text-zinc-400">
-                    {f.bankName
-                      ? `${farmerBankLabel(f.bankName)}${f.bankAccountNo ? ` · ${f.bankAccountNo}` : ""}`
-                      : "—"}
+                  <td className="px-4 py-3 text-zinc-700 dark:text-zinc-300">
+                    <BankAccountsCell accounts={c.bankAccounts} compact />
                   </td>
                   <td className="px-4 py-3">
-                    <span className={badgeClass(f.isActive)}>
-                      {f.isActive ? t.badge.active : t.badge.inactive}
+                    <span className={badgeClass(c.isActive)}>
+                      {c.isActive ? t.badge.active : t.badge.inactive}
                     </span>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       {canEdit ? (
                         <Link
-                          href={`/farmers/${f.id}/edit`}
+                          href={`/customers/${c.id}/edit`}
                           className={editLinkCompactClass}
                         >
                           {t.actions.edit}
@@ -182,8 +173,8 @@ export function FarmerList({
                       ) : null}
                       {canToggle ? (
                         <ToggleActiveForm
-                          farmerId={f.id}
-                          isActive={f.isActive}
+                          customerId={c.id}
+                          isActive={c.isActive}
                           compact
                         />
                       ) : null}

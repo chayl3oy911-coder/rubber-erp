@@ -1,18 +1,18 @@
 import Link from "next/link";
 
 import { listBranches } from "@/modules/branch/service";
-import { farmerT } from "@/modules/farmer/i18n";
+import { customerT } from "@/modules/customer/i18n";
 import {
-  FARMER_PAGE_SIZE_DEFAULT,
-  listFarmersQuerySchema,
-} from "@/modules/farmer/schemas";
-import { listFarmers } from "@/modules/farmer/service";
+  CUSTOMER_PAGE_SIZE_DEFAULT,
+  listCustomersQuerySchema,
+} from "@/modules/customer/schemas";
+import { listCustomers } from "@/modules/customer/service";
 import { hasPermission, requirePermission } from "@/shared/auth/dal";
 
-import { FarmerList } from "./_components/farmer-list";
-import { FarmerSearch } from "./_components/farmer-search";
+import { CustomerList } from "./_components/customer-list";
+import { CustomerSearch } from "./_components/customer-search";
 
-const t = farmerT();
+const t = customerT();
 
 const primaryButtonClass =
   "inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white transition-colors hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2";
@@ -49,7 +49,7 @@ function buildPageHref(
   }
   if (page > 1) params.set("page", String(page));
   const qs = params.toString();
-  return qs ? `/farmers?${qs}` : "/farmers";
+  return qs ? `/customers?${qs}` : "/customers";
 }
 
 function toggleInactiveHref(current: SearchParamsRecord): string {
@@ -65,18 +65,18 @@ function toggleInactiveHref(current: SearchParamsRecord): string {
   }
   if (!includeInactive) params.set("includeInactive", "true");
   const qs = params.toString();
-  return qs ? `/farmers?${qs}` : "/farmers";
+  return qs ? `/customers?${qs}` : "/customers";
 }
 
-export default async function FarmersPage({
+export default async function CustomersPage({
   searchParams,
 }: {
   searchParams: Promise<SearchParamsRecord>;
 }) {
-  const me = await requirePermission("farmer.read");
+  const me = await requirePermission("customer.read");
   const sp = await searchParams;
 
-  const parsed = listFarmersQuerySchema.safeParse({
+  const parsed = listCustomersQuerySchema.safeParse({
     q: pickString(sp, "q"),
     branchId: pickString(sp, "branchId"),
     includeInactive: pickString(sp, "includeInactive"),
@@ -84,7 +84,6 @@ export default async function FarmersPage({
     pageSize: pickString(sp, "pageSize"),
   });
 
-  // For invalid query params, fall back to defaults rather than throwing.
   const query = parsed.success
     ? parsed.data
     : {
@@ -92,17 +91,15 @@ export default async function FarmersPage({
         branchId: undefined,
         includeInactive: false,
         page: 1,
-        pageSize: FARMER_PAGE_SIZE_DEFAULT,
+        pageSize: CUSTOMER_PAGE_SIZE_DEFAULT,
       };
 
-  const result = await listFarmers(me, query);
+  const result = await listCustomers(me, query);
 
-  const canCreate = hasPermission(me, "farmer.create");
-  const canEdit = hasPermission(me, "farmer.update");
-  const canToggle = hasPermission(me, "farmer.update");
+  const canCreate = hasPermission(me, "customer.create");
+  const canEdit = hasPermission(me, "customer.update");
+  const canToggle = hasPermission(me, "customer.update");
 
-  // Branch filter dropdown options (super admin sees all active branches;
-  // multi-branch users see their own).
   const branches = await listBranches(me);
   const showBranchFilter = me.isSuperAdmin || branches.length > 1;
   const showBranchColumn = me.isSuperAdmin || branches.length > 1;
@@ -135,7 +132,7 @@ export default async function FarmersPage({
             {includeInactive ? t.actions.hideInactive : t.actions.showInactive}
           </Link>
           {canCreate ? (
-            <Link href="/farmers/new" className={primaryButtonClass}>
+            <Link href="/customers/new" className={primaryButtonClass}>
               {t.actions.create}
             </Link>
           ) : null}
@@ -143,7 +140,7 @@ export default async function FarmersPage({
       </header>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <FarmerSearch initialQ={query.q ?? ""} />
+        <CustomerSearch initialQ={query.q ?? ""} />
         {showBranchFilter ? (
           <BranchFilter
             branches={branches.map((b) => ({
@@ -157,8 +154,8 @@ export default async function FarmersPage({
         ) : null}
       </div>
 
-      <FarmerList
-        farmers={result.farmers}
+      <CustomerList
+        customers={result.customers}
         canEdit={canEdit}
         canToggle={canToggle}
         searchTerm={query.q}
@@ -225,7 +222,6 @@ function BranchFilter({
   currentBranchId: string | undefined;
   currentParams: SearchParamsRecord;
 }) {
-  // Renders a list of links so we don't need client JS just for filtering.
   const baseHref = (branchId: string | null) => {
     const params = new URLSearchParams();
     for (const [k, v] of Object.entries(currentParams)) {
@@ -238,7 +234,7 @@ function BranchFilter({
     }
     if (branchId) params.set("branchId", branchId);
     const qs = params.toString();
-    return qs ? `/farmers?${qs}` : "/farmers";
+    return qs ? `/customers?${qs}` : "/customers";
   };
 
   const linkBase =
