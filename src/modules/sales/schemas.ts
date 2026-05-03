@@ -119,6 +119,23 @@ const optionalDate = z
   )
   .optional();
 
+// Optional UUIDs for receiving fields. Empty/whitespace coerces to undefined
+// so callers can opt out of choosing explicitly (defaults are resolved by
+// the service for create — update treats undefined as "no change").
+const receivingEntityIdField = z
+  .preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined),
+    z.string().uuid(t.errors.receivingEntityIdInvalid).optional(),
+  )
+  .optional();
+
+const receivingBankAccountIdField = z
+  .preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined),
+    z.string().uuid(t.errors.receivingBankAccountIdInvalid).optional(),
+  )
+  .optional();
+
 // ─── Line schema ─────────────────────────────────────────────────────────────
 
 export const salesLineInputSchema = z.object({
@@ -147,21 +164,35 @@ const linesArrayField = z
 
 // ─── Create ──────────────────────────────────────────────────────────────────
 
-export const createSalesSchema = z.object({
-  branchId: uuid(t.errors.branchInvalid),
-  buyerName: requiredText(
-    200,
-    t.errors.buyerNameRequired,
-    t.errors.buyerNameTooLong,
-  ),
-  saleType: saleTypeField,
-  drcPercent: drcField,
-  pricePerKg: priceField,
-  withholdingTaxPercent: percentField.optional().default(0),
-  expectedReceiveDate: optionalDate,
-  note: optionalText(1000, t.errors.noteTooLong),
-  lines: linesArrayField,
-});
+export const createSalesSchema = z
+  .object({
+    branchId: uuid(t.errors.branchInvalid),
+    buyerName: requiredText(
+      200,
+      t.errors.buyerNameRequired,
+      t.errors.buyerNameTooLong,
+    ),
+    saleType: saleTypeField,
+    drcPercent: drcField,
+    pricePerKg: priceField,
+    withholdingTaxPercent: percentField.optional().default(0),
+    expectedReceiveDate: optionalDate,
+    note: optionalText(1000, t.errors.noteTooLong),
+    lines: linesArrayField,
+    receivingEntityId: receivingEntityIdField,
+    receivingBankAccountId: receivingBankAccountIdField,
+  })
+  // Either both ids or neither — half-supplied input is ambiguous (which
+  // side does the user trust?) so we reject it. Service falls back to the
+  // configured default when both are omitted.
+  .refine(
+    (v) =>
+      (v.receivingEntityId === undefined &&
+        v.receivingBankAccountId === undefined) ||
+      (v.receivingEntityId !== undefined &&
+        v.receivingBankAccountId !== undefined),
+    { message: t.errors.receivingBankAccountIdInvalid, path: ["receivingBankAccountId"] },
+  );
 
 export type CreateSalesInput = z.infer<typeof createSalesSchema>;
 
@@ -180,10 +211,23 @@ export const updateSalesFieldsSchema = z
     withholdingTaxPercent: percentField.optional(),
     expectedReceiveDate: optionalDate,
     note: optionalText(1000, t.errors.noteTooLong),
+    receivingEntityId: receivingEntityIdField,
+    receivingBankAccountId: receivingBankAccountIdField,
   })
   .refine((d) => Object.values(d).some((v) => v !== undefined), {
     message: t.errors.nothingToUpdate,
-  });
+  })
+  .refine(
+    (v) =>
+      (v.receivingEntityId === undefined &&
+        v.receivingBankAccountId === undefined) ||
+      (v.receivingEntityId !== undefined &&
+        v.receivingBankAccountId !== undefined),
+    {
+      message: t.errors.receivingBankAccountIdInvalid,
+      path: ["receivingBankAccountId"],
+    },
+  );
 
 export type UpdateSalesFieldsInput = z.infer<typeof updateSalesFieldsSchema>;
 
@@ -224,13 +268,26 @@ export const patchSalesSchema = z
     withholdingTaxPercent: percentField.optional(),
     expectedReceiveDate: optionalDate,
     note: optionalText(1000, t.errors.noteTooLong),
+    receivingEntityId: receivingEntityIdField,
+    receivingBankAccountId: receivingBankAccountIdField,
   })
   .refine((d) => d.status !== undefined || hasAnyFieldUpdate(d), {
     message: t.errors.nothingToUpdate,
   })
   .refine((d) => !(d.status !== undefined && hasAnyFieldUpdate(d)), {
     message: t.errors.fieldsAndStatusMixed,
-  });
+  })
+  .refine(
+    (v) =>
+      (v.receivingEntityId === undefined &&
+        v.receivingBankAccountId === undefined) ||
+      (v.receivingEntityId !== undefined &&
+        v.receivingBankAccountId !== undefined),
+    {
+      message: t.errors.receivingBankAccountIdInvalid,
+      path: ["receivingBankAccountId"],
+    },
+  );
 
 function hasAnyFieldUpdate(d: {
   buyerName?: unknown;
@@ -240,6 +297,8 @@ function hasAnyFieldUpdate(d: {
   withholdingTaxPercent?: unknown;
   expectedReceiveDate?: unknown;
   note?: unknown;
+  receivingEntityId?: unknown;
+  receivingBankAccountId?: unknown;
 }): boolean {
   return (
     d.buyerName !== undefined ||
@@ -248,7 +307,9 @@ function hasAnyFieldUpdate(d: {
     d.pricePerKg !== undefined ||
     d.withholdingTaxPercent !== undefined ||
     d.expectedReceiveDate !== undefined ||
-    d.note !== undefined
+    d.note !== undefined ||
+    d.receivingEntityId !== undefined ||
+    d.receivingBankAccountId !== undefined
   );
 }
 

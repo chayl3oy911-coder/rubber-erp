@@ -7,6 +7,9 @@ import {
   SalesInsufficientStockError,
   SalesLinesEmptyError,
   SalesNotFoundError,
+  SalesReceivingInactiveError,
+  SalesReceivingLockedError,
+  SalesReceivingNotInScopeError,
   SalesStatusFieldsLockedError,
   SalesStatusTransitionError,
   SalesStockLotInactiveError,
@@ -144,6 +147,15 @@ export async function PATCH(
     }
     if (error instanceof SalesInsufficientStockError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof SalesReceivingLockedError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (
+      error instanceof SalesReceivingNotInScopeError ||
+      error instanceof SalesReceivingInactiveError
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     throw error;
   }

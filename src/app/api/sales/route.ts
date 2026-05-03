@@ -11,6 +11,9 @@ import {
   SalesDuplicateLotError,
   SalesInsufficientStockError,
   SalesLinesEmptyError,
+  SalesReceivingDefaultMissingError,
+  SalesReceivingInactiveError,
+  SalesReceivingNotInScopeError,
   SalesStockLotBranchMismatchError,
   SalesStockLotInactiveError,
   SalesStockLotNotActiveError,
@@ -120,6 +123,15 @@ export async function POST(request: NextRequest) {
     }
     if (error instanceof SalesAutoGenError) {
       return NextResponse.json({ error: error.message }, { status: 409 });
+    }
+    if (error instanceof SalesReceivingDefaultMissingError) {
+      return NextResponse.json({ error: error.message }, { status: 422 });
+    }
+    if (
+      error instanceof SalesReceivingNotInScopeError ||
+      error instanceof SalesReceivingInactiveError
+    ) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
     throw error;
   }

@@ -47,6 +47,8 @@ model AppUser {
   salesOrdersCreated   SalesOrder[] @relation("SalesCreator")
   salesOrdersConfirmed SalesOrder[] @relation("SalesConfirmer")
   salesOrdersCancelled SalesOrder[] @relation("SalesCanceller")
+
+  receivingEntitiesCreated ReceivingEntity[] @relation("ReceivingEntityCreator")
 }
 
 // ─── RBAC ────────────────────────────────────────────────────────────────────
@@ -121,13 +123,14 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  userBranches    UserBranch[]
-  customers       Customer[]
-  purchaseTickets PurchaseTicket[]
-  stockLots       StockLot[]
-  stockMovements  StockMovement[]
-  salesOrders     SalesOrder[]
-  auditLogs       AuditLog[]
+  userBranches      UserBranch[]
+  customers         Customer[]
+  purchaseTickets   PurchaseTicket[]
+  stockLots         StockLot[]
+  stockMovements    StockMovement[]
+  salesOrders       SalesOrder[]
+  receivingEntities ReceivingEntity[]
+  auditLogs         AuditLog[]
 }
 
 model UserBranch {
@@ -444,6 +447,23 @@ model SalesOrder {
   receivedAt          DateTime?
   note                String?
 
+  // ── ขายในนาม / บัญชีรับเงิน (Receiving party) ──
+  // FK + snapshot pattern: FK lets future Payment / Reconciliation join, while
+  // the *Snapshot fields freeze the rendered values at create/edit time so the
+  // historical document survives later master-data edits or deactivation.
+  // Both FKs are nullable because pre-existing rows from before Step 10 had no
+  // receiving info; new rows enforce non-null at the service layer (default
+  // resolution → ReceivingDefaultMissingError if the workspace has no defaults).
+  receivingEntityId      String? @db.Uuid
+  receivingBankAccountId String? @db.Uuid
+
+  receivingEntityNameSnapshot      String?
+  receivingEntityTypeSnapshot      String? // COMPANY | PERSONAL
+  receivingTaxIdSnapshot           String?
+  receivingBankNameSnapshot        String?
+  receivingBankAccountNoSnapshot   String?
+  receivingBankAccountNameSnapshot String?
+
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -460,6 +480,9 @@ model SalesOrder {
   confirmedBy AppUser? @relation("SalesConfirmer", fields: [confirmedById], references: [id])
   cancelledBy AppUser? @relation("SalesCanceller", fields: [cancelledById], references: [id])
 
+  receivingEntity      ReceivingEntity?      @relation("SalesReceivingEntity", fields: [receivingEntityId], references: [id])
+  receivingBankAccount ReceivingBankAccount? @relation("SalesReceivingBankAccount", fields: [receivingBankAccountId], references: [id])
+
   lines SalesOrderLine[]
 
   @@unique([branchId, salesNo])
@@ -467,6 +490,8 @@ model SalesOrder {
   @@index([branchId, status])
   @@index([branchId, saleType])
   @@index([branchId, createdAt])
+  @@index([receivingEntityId])
+  @@index([receivingBankAccountId])
 }
 
 // One row per StockLot referenced by a SalesOrder. Snapshots `rubberType`
@@ -501,6 +526,86 @@ model SalesOrderLine {
   @@unique([salesOrderId, stockLotId])
   @@index([salesOrderId])
   @@index([stockLotId])
+}
+
+// ─── Receiving / Company Payment Setup ──────────────────────────────────────
+//
+// "ขายในนาม" — the entity that appears on a SalesOrder as the legal receiver
+// of the buyer's payment. Examples: บริษัท เอเวอร์รับเบอร์ จำกัด (COMPANY) or
+// คุณสมชาย (PERSONAL) when the proprietor receives money personally for some
+// channels. Master data only — Payment/Reconciliation lives in a future step.
+//
+// `branchId` semantics:
+//   - NULL  = company-wide; visible/usable across every branch
+//   - uuid  = scoped to that branch only; users not in that branch can't pick it
+//
+// `isDefault` semantics: at most ONE active default per scope, where a "scope"
+// is one of {NULL, branchId-uuid}. Service-enforced inside a transaction via
+// "clear-others-then-set". A Postgres partial unique index in the migration
+// hardens this against races (Prisma can't express partial unique → raw SQL).
+//
+// FK from SalesOrder is `Restrict` (default Prisma behaviour for required
+// relations? — here optional, so we still rely on `isActive=false` soft-
+// delete; service forbids hard delete). Snapshot fields on SalesOrder mean a
+// deactivated entity does NOT corrupt historical bills.
+model ReceivingEntity {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId    String?  @db.Uuid
+  type        String // COMPANY | PERSONAL
+  name        String
+  taxId       String?
+  address     String?
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  createdBy AppUser? @relation("ReceivingEntityCreator", fields: [createdById], references: [id])
+
+  bankAccounts ReceivingBankAccount[]
+  salesOrders  SalesOrder[]           @relation("SalesReceivingEntity")
+
+  @@index([branchId])
+  @@index([isActive])
+  @@index([isDefault])
+  @@index([branchId, isActive])
+}
+
+// 1 ReceivingEntity ≤ 10 active bank accounts (service-enforced, mirrors the
+// CustomerBankAccount pattern but raised from 3 → 10 because a company may
+// hold accounts across multiple banks for collection-channel purposes).
+//
+// Uniqueness of (bankName, bankAccountNo) is SCOPED to the entity here (not
+// global like CustomerBankAccount). Different entities — e.g. company vs.
+// proprietor's personal — can legitimately share an account number.
+//
+// Exactly one active row may have `isPrimary = true` per entity. Enforced
+// in service + a partial unique index from the migration (Prisma can't
+// express `WHERE isPrimary AND isActive` partials).
+//
+// `bankAccountName` is REQUIRED here (versus CustomerBankAccount where it's
+// optional) because this account is shown on the receipt the buyer pays into,
+// and the account name must be printable.
+model ReceivingBankAccount {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receivingEntityId String   @db.Uuid
+  bankName          String
+  bankAccountNo     String
+  bankAccountName   String
+  isPrimary         Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  receivingEntity ReceivingEntity @relation(fields: [receivingEntityId], references: [id], onDelete: Cascade)
+  salesOrders     SalesOrder[]    @relation("SalesReceivingBankAccount")
+
+  @@unique([receivingEntityId, bankName, bankAccountNo])
+  @@index([receivingEntityId])
+  @@index([receivingEntityId, isActive])
+  @@index([bankName, bankAccountNo])
 }
 
 // ─── Audit ───────────────────────────────────────────────────────────────────

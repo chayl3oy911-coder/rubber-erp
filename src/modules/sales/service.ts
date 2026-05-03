@@ -7,6 +7,11 @@ import {
 } from "@prisma/client";
 
 import { recordNotificationEvent } from "@/modules/notifications/events";
+import {
+  loadReceivingForSale,
+  resolveDefaultReceivingForSale,
+  type ResolvedReceiving,
+} from "@/modules/receivingAccount/service";
 import { toStockMovementDTO, type StockMovementDTO } from "@/modules/stock/dto";
 import { hasPermission } from "@/shared/auth/dal";
 import type { AuthenticatedUser } from "@/shared/auth/types";
@@ -156,6 +161,36 @@ export class SalesDuplicateLotError extends Error {
   }
 }
 
+// ─── Receiving-related errors ───────────────────────────────────────────────
+
+export class SalesReceivingDefaultMissingError extends Error {
+  constructor() {
+    super(t.errors.receivingDefaultMissing);
+    this.name = "SalesReceivingDefaultMissingError";
+  }
+}
+
+export class SalesReceivingNotInScopeError extends Error {
+  constructor() {
+    super(t.errors.receivingNotInScope);
+    this.name = "SalesReceivingNotInScopeError";
+  }
+}
+
+export class SalesReceivingInactiveError extends Error {
+  constructor() {
+    super(t.errors.receivingInactive);
+    this.name = "SalesReceivingInactiveError";
+  }
+}
+
+export class SalesReceivingLockedError extends Error {
+  constructor() {
+    super(t.errors.receivingLockedAfterConfirm);
+    this.name = "SalesReceivingLockedError";
+  }
+}
+
 // ─── Audit helpers ───────────────────────────────────────────────────────────
 
 export type SalesAuditMeta = {
@@ -192,6 +227,14 @@ function salesSnapshot(
     createdById: s.createdById,
     confirmedById: s.confirmedById,
     cancelledById: s.cancelledById,
+    receivingEntityId: s.receivingEntityId,
+    receivingBankAccountId: s.receivingBankAccountId,
+    receivingEntityNameSnapshot: s.receivingEntityNameSnapshot,
+    receivingEntityTypeSnapshot: s.receivingEntityTypeSnapshot,
+    receivingTaxIdSnapshot: s.receivingTaxIdSnapshot,
+    receivingBankNameSnapshot: s.receivingBankNameSnapshot,
+    receivingBankAccountNoSnapshot: s.receivingBankAccountNoSnapshot,
+    receivingBankAccountNameSnapshot: s.receivingBankAccountNameSnapshot,
     lines: (s.lines ?? []).map(salesLineSnapshot),
   } as Prisma.InputJsonValue;
 }
@@ -338,6 +381,39 @@ function ensureBranchInScope(
   if (!actor.branchIds.includes(branchId)) {
     throw new SalesBranchNotInScopeError();
   }
+}
+
+// ─── Receiving resolution (Step 10) ─────────────────────────────────────────
+//
+// Two paths feed the same shape (`ResolvedReceiving`):
+//   1. caller supplied both ids — validate them via the receivingAccount
+//      module and translate failures to friendly Sales* error classes.
+//   2. caller omitted both ids — fall back to the workspace-configured
+//      default. Branch-scoped default beats company-wide.
+//
+// Either way we end up writing 8 columns: 2 FKs + 6 snapshot fields.
+
+async function resolveReceivingForCreate(
+  tx: Prisma.TransactionClient,
+  actor: AuthenticatedUser,
+  branchId: string,
+  entityId: string | undefined,
+  bankAccountId: string | undefined,
+): Promise<ResolvedReceiving> {
+  if (entityId && bankAccountId) {
+    const loaded = await loadReceivingForSale(
+      tx,
+      actor,
+      branchId,
+      entityId,
+      bankAccountId,
+    );
+    if (!loaded) throw new SalesReceivingNotInScopeError();
+    return loaded;
+  }
+  const fallback = await resolveDefaultReceivingForSale(tx, branchId);
+  if (!fallback) throw new SalesReceivingDefaultMissingError();
+  return fallback;
 }
 
 // ─── Auto-generate salesNo ───────────────────────────────────────────────────
@@ -775,6 +851,19 @@ export async function createSalesOrder(
             input.lines,
           );
 
+          // Resolve receiving (entity + bank account) BEFORE the create so
+          // we can write FK + 6 snapshot columns atomically. Two paths:
+          //   1. caller supplied both ids → validate scope + active flags
+          //   2. caller omitted both     → fall back to the configured
+          //      default (branch-scoped beats company-wide)
+          const receiving = await resolveReceivingForCreate(
+            tx,
+            actor,
+            input.branchId,
+            input.receivingEntityId,
+            input.receivingBankAccountId,
+          );
+
           const grossWeightTotal = sumDecimal(
             resolved.map((r) => r.grossWeight),
           ).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
@@ -814,6 +903,15 @@ export async function createSalesOrder(
               expectedReceiveDate: input.expectedReceiveDate ?? null,
               note: input.note ?? null,
               createdById: actor.id,
+              receivingEntityId: receiving.entityId,
+              receivingBankAccountId: receiving.bankAccountId,
+              receivingEntityNameSnapshot: receiving.entityNameSnapshot,
+              receivingEntityTypeSnapshot: receiving.entityTypeSnapshot,
+              receivingTaxIdSnapshot: receiving.taxIdSnapshot,
+              receivingBankNameSnapshot: receiving.bankNameSnapshot,
+              receivingBankAccountNoSnapshot: receiving.bankAccountNoSnapshot,
+              receivingBankAccountNameSnapshot:
+                receiving.bankAccountNameSnapshot,
               lines: {
                 create: resolved.map((r) => ({
                   stockLotId: r.stockLotId,
@@ -933,6 +1031,18 @@ export async function updateSalesOrderFields(
     }
   }
 
+  // CONFIRMED sales freeze the receiving entity/account on the bill (per
+  // Step 10 confirmation: "lock เด็ดขาดในรอบนี้"). The schema-level
+  // pairing rule means receivingEntityId and receivingBankAccountId are
+  // either both undefined or both supplied here.
+  if (
+    status === "CONFIRMED" &&
+    (input.receivingEntityId !== undefined ||
+      input.receivingBankAccountId !== undefined)
+  ) {
+    throw new SalesReceivingLockedError();
+  }
+
   const buyerName = input.buyerName ?? existing.buyerName;
   const saleType = (input.saleType ?? existing.saleType) as SaleType;
   const drcPercent = new Prisma.Decimal(
@@ -972,6 +1082,45 @@ export async function updateSalesOrderFields(
   }
 
   const updated = await prisma.$transaction(async (tx) => {
+    // Receiving fields — DRAFT only (CONFIRMED-locked is handled above).
+    // When both ids are supplied we re-validate via the receivingAccount
+    // module to make sure the chosen entity/bank are still active and in
+    // scope; an unchanged pair is a cheap re-validation.
+    let receivingPatch: {
+      receivingEntityId?: string;
+      receivingBankAccountId?: string;
+      receivingEntityNameSnapshot?: string;
+      receivingEntityTypeSnapshot?: string;
+      receivingTaxIdSnapshot?: string | null;
+      receivingBankNameSnapshot?: string;
+      receivingBankAccountNoSnapshot?: string;
+      receivingBankAccountNameSnapshot?: string;
+    } = {};
+    if (
+      status === "DRAFT" &&
+      input.receivingEntityId !== undefined &&
+      input.receivingBankAccountId !== undefined
+    ) {
+      const loaded = await loadReceivingForSale(
+        tx,
+        actor,
+        existing.branchId,
+        input.receivingEntityId,
+        input.receivingBankAccountId,
+      );
+      if (!loaded) throw new SalesReceivingNotInScopeError();
+      receivingPatch = {
+        receivingEntityId: loaded.entityId,
+        receivingBankAccountId: loaded.bankAccountId,
+        receivingEntityNameSnapshot: loaded.entityNameSnapshot,
+        receivingEntityTypeSnapshot: loaded.entityTypeSnapshot,
+        receivingTaxIdSnapshot: loaded.taxIdSnapshot,
+        receivingBankNameSnapshot: loaded.bankNameSnapshot,
+        receivingBankAccountNoSnapshot: loaded.bankAccountNoSnapshot,
+        receivingBankAccountNameSnapshot: loaded.bankAccountNameSnapshot,
+      };
+    }
+
     const sale = await tx.salesOrder.update({
       where: { id: existing.id },
       data: {
@@ -987,6 +1136,7 @@ export async function updateSalesOrderFields(
         profitAmount,
         expectedReceiveDate,
         note,
+        ...receivingPatch,
       },
       include: SALES_INCLUDE,
     });

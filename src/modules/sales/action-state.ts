@@ -9,7 +9,9 @@ export type SalesFieldKey =
   | "withholdingTaxPercent"
   | "expectedReceiveDate"
   | "note"
-  | "lines";
+  | "lines"
+  | "receivingEntityId"
+  | "receivingBankAccountId";
 
 /**
  * Single line in form state — UI uses this for both the create form and
@@ -40,6 +42,8 @@ export type SalesFormValues = {
   expectedReceiveDate?: string;
   note?: string;
   lines?: SalesLineFormValue[];
+  receivingEntityId?: string;
+  receivingBankAccountId?: string;
 };
 
 export type SalesActionState = {

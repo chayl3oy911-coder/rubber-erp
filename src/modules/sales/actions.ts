@@ -25,6 +25,10 @@ import {
   SalesLinesEmptyError,
   SalesLinesLockedError,
   SalesNotFoundError,
+  SalesReceivingDefaultMissingError,
+  SalesReceivingInactiveError,
+  SalesReceivingLockedError,
+  SalesReceivingNotInScopeError,
   SalesStatusFieldsLockedError,
   SalesStatusTransitionError,
   SalesStockLotBranchMismatchError,
@@ -115,6 +119,10 @@ function collectCreateForm(formData: FormData) {
     expectedReceiveDate: emptyToUndefined(formData.get("expectedReceiveDate")),
     note: emptyToUndefined(formData.get("note")),
     lines: parseLinesJson(formData.get("linesJson")),
+    receivingEntityId: emptyToUndefined(formData.get("receivingEntityId")),
+    receivingBankAccountId: emptyToUndefined(
+      formData.get("receivingBankAccountId"),
+    ),
   };
 }
 
@@ -129,6 +137,10 @@ function collectUpdateHeaderForm(formData: FormData) {
     ),
     expectedReceiveDate: emptyToUndefined(formData.get("expectedReceiveDate")),
     note: emptyToUndefined(formData.get("note")),
+    receivingEntityId: emptyToUndefined(formData.get("receivingEntityId")),
+    receivingBankAccountId: emptyToUndefined(
+      formData.get("receivingBankAccountId"),
+    ),
   };
 }
 
@@ -186,6 +198,8 @@ export async function createSalesAction(
       stockLotId: l.stockLotId,
       grossWeight: l.grossWeight,
     })),
+    receivingEntityId: raw.receivingEntityId,
+    receivingBankAccountId: raw.receivingBankAccountId,
   });
 
   if (!parsed.success) {
@@ -257,6 +271,23 @@ export async function createSalesAction(
         values: { ...raw, saleType: raw.saleType as SaleType | undefined },
       };
     }
+    if (
+      error instanceof SalesReceivingNotInScopeError ||
+      error instanceof SalesReceivingInactiveError
+    ) {
+      return {
+        fieldErrors: { receivingBankAccountId: error.message },
+        error: error.message,
+        values: { ...raw, saleType: raw.saleType as SaleType | undefined },
+      };
+    }
+    if (error instanceof SalesReceivingDefaultMissingError) {
+      return {
+        fieldErrors: { receivingEntityId: error.message },
+        error: error.message,
+        values: { ...raw, saleType: raw.saleType as SaleType | undefined },
+      };
+    }
     throw error;
   }
 
@@ -304,6 +335,23 @@ export async function updateSalesAction(
     if (error instanceof SalesStatusFieldsLockedError) {
       return {
         fieldErrors: { [error.field as SalesFieldKey]: error.message },
+        values: { ...raw, saleType: raw.saleType as SaleType | undefined },
+      };
+    }
+    if (error instanceof SalesReceivingLockedError) {
+      return {
+        fieldErrors: { receivingBankAccountId: error.message },
+        error: error.message,
+        values: { ...raw, saleType: raw.saleType as SaleType | undefined },
+      };
+    }
+    if (
+      error instanceof SalesReceivingNotInScopeError ||
+      error instanceof SalesReceivingInactiveError
+    ) {
+      return {
+        fieldErrors: { receivingBankAccountId: error.message },
+        error: error.message,
         values: { ...raw, saleType: raw.saleType as SaleType | undefined },
       };
     }

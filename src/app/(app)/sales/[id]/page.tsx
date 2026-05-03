@@ -7,6 +7,7 @@ import {
   listMovementsForSale,
 } from "@/modules/sales/service";
 import { hasPermission, requirePermission } from "@/shared/auth/dal";
+import { bankLabel } from "@/shared/banks";
 import { Card, CardContent } from "@/shared/ui";
 
 import { SaleTypeBadge } from "../_components/sale-type-badge";
@@ -198,6 +199,35 @@ export default async function SalesDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Receiving snapshot — frozen values from create/edit time. */}
+      <Card>
+        <CardContent className="flex flex-col gap-3">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+            {t.misc.receivingSectionTitle}
+          </h2>
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <Field label={t.fields.receivingEntity}>
+              {sale.receivingEntityNameSnapshot ?? "—"}
+            </Field>
+            <Field label={t.fields.receivingTaxId}>
+              {sale.receivingTaxIdSnapshot ?? "—"}
+            </Field>
+            <Field label={t.fields.receivingBank}>
+              {sale.receivingBankNameSnapshot
+                ? (bankLabel(sale.receivingBankNameSnapshot) ??
+                  sale.receivingBankNameSnapshot)
+                : "—"}
+            </Field>
+            <Field label={t.fields.receivingBankAccountNo}>
+              {sale.receivingBankAccountNoSnapshot ?? "—"}
+            </Field>
+            <Field label={t.fields.receivingBankAccountName} fullWidth>
+              {sale.receivingBankAccountNameSnapshot ?? "—"}
+            </Field>
+          </dl>
+        </CardContent>
+      </Card>
 
       {/* Lines */}
       <section className="flex flex-col gap-2">

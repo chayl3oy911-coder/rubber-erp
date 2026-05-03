@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { listBranches } from "@/modules/branch/service";
+import { listReceivingEntities } from "@/modules/receivingAccount/service";
 import { salesT } from "@/modules/sales/i18n";
 import { requirePermission } from "@/shared/auth/dal";
 
@@ -34,6 +35,17 @@ export default async function NewSalesPage() {
   const showBranchSelect = me.isSuperAdmin || branches.length > 1;
   const defaultBranchId = branches[0]?.id ?? "";
 
+  // Fetch receiving entities + active bank accounts for the picker. We grab
+  // the actor's entire visible scope (own branches + company-wide) and let
+  // the client narrow on the selected branch. `pageSize: max` is fine here
+  // — entities are master data with a small total count.
+  const receivingList = await listReceivingEntities(me, {
+    branchScope: "all",
+    includeInactive: false,
+    page: 1,
+    pageSize: 200,
+  });
+
   return (
     <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -61,6 +73,7 @@ export default async function NewSalesPage() {
         }))}
         defaultBranchId={defaultBranchId}
         showBranchSelect={showBranchSelect}
+        receivingEntities={receivingList.entities}
       />
     </div>
   );

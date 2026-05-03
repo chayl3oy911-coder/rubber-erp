@@ -75,6 +75,13 @@ type SalesDict = {
     lineGrossWeight: string;
     lineCostAmount: string;
     lots: string;
+    // ── Receiving (ขายในนาม / บัญชีรับเงิน) ──
+    receivingEntity: string;
+    receivingEntityType: string;
+    receivingTaxId: string;
+    receivingBank: string;
+    receivingBankAccountNo: string;
+    receivingBankAccountName: string;
   };
   units: {
     kg: string;
@@ -177,6 +184,12 @@ type SalesDict = {
     linesEmpty: string;
     duplicateLot: string;
     lineGrossPositive: string;
+    receivingEntityIdInvalid: string;
+    receivingBankAccountIdInvalid: string;
+    receivingDefaultMissing: string;
+    receivingNotInScope: string;
+    receivingInactive: string;
+    receivingLockedAfterConfirm: string;
   };
   empty: {
     list: string;
@@ -215,6 +228,9 @@ type SalesDict = {
     salesSnapshotTitle: string;
     linesSectionTitle: string;
     lotsSummary: (firstLotNo: string, more: number) => string;
+    receivingSectionTitle: string;
+    receivingPreviewLine: (entityName: string, bankLabel: string) => string;
+    receivingMissingCta: string;
   };
 };
 
@@ -277,6 +293,12 @@ const TH: SalesDict = {
     lineGrossWeight: "น้ำหนักที่ขาย (Wet)",
     lineCostAmount: "ต้นทุนรายการนี้",
     lots: "Lots",
+    receivingEntity: "ขายในนาม",
+    receivingEntityType: "ประเภทผู้รับเงิน",
+    receivingTaxId: "เลขผู้เสียภาษี",
+    receivingBank: "ธนาคาร",
+    receivingBankAccountNo: "เลขที่บัญชี",
+    receivingBankAccountName: "ชื่อบัญชี",
   },
   units: {
     kg: "กก.",
@@ -392,6 +414,15 @@ const TH: SalesDict = {
     linesEmpty: "ต้องมีอย่างน้อย 1 Lot ในใบขาย",
     duplicateLot: "Lot นี้อยู่ในบิลอยู่แล้ว ห้ามเพิ่มซ้ำ",
     lineGrossPositive: "น้ำหนักของแต่ละ Lot ต้องมากกว่า 0",
+    receivingEntityIdInvalid: "รหัสผู้รับเงินไม่ถูกต้อง",
+    receivingBankAccountIdInvalid: "รหัสบัญชีรับเงินไม่ถูกต้อง",
+    receivingDefaultMissing:
+      "ยังไม่ได้ตั้งค่าบัญชีรับเงินเริ่มต้นในระบบ — ไปที่หน้าตั้งค่าก่อนเปิดใบขาย",
+    receivingNotInScope:
+      "บัญชีรับเงินนี้ใช้ในสาขานี้ไม่ได้ — กรุณาเลือกบัญชีอื่น",
+    receivingInactive: "บัญชีรับเงินนี้ถูกปิดใช้งาน กรุณาเลือกบัญชีอื่น",
+    receivingLockedAfterConfirm:
+      "ใบขายยืนยันแล้ว — แก้บัญชีรับเงินไม่ได้ ถ้าต้องแก้ ให้เปิดบิลใหม่",
   },
   empty: {
     list: "ยังไม่มีใบขายในระบบ",
@@ -442,6 +473,10 @@ const TH: SalesDict = {
     linesSectionTitle: "รายการ Lot ที่ขาย",
     lotsSummary: (firstLotNo, more) =>
       more > 0 ? `${firstLotNo} + อีก ${more} รายการ` : firstLotNo,
+    receivingSectionTitle: "ขายในนาม / บัญชีรับเงิน",
+    receivingPreviewLine: (entityName, bank) => `${entityName} · ${bank}`,
+    receivingMissingCta:
+      "ยังไม่มีบัญชีรับเงินที่ใช้ได้ — ไปที่ตั้งค่าเพื่อเพิ่มก่อน",
   },
 };
 
@@ -504,6 +539,12 @@ const EN: SalesDict = {
     lineGrossWeight: "Line gross weight",
     lineCostAmount: "Line cost",
     lots: "Lots",
+    receivingEntity: "Receiver",
+    receivingEntityType: "Receiver type",
+    receivingTaxId: "Tax ID",
+    receivingBank: "Bank",
+    receivingBankAccountNo: "Account #",
+    receivingBankAccountName: "Account name",
   },
   units: {
     kg: "kg",
@@ -621,6 +662,15 @@ const EN: SalesDict = {
     linesEmpty: "At least one lot is required",
     duplicateLot: "This lot is already in the bill",
     lineGrossPositive: "Line gross weight must be > 0",
+    receivingEntityIdInvalid: "Invalid receiving entity id",
+    receivingBankAccountIdInvalid: "Invalid receiving bank account id",
+    receivingDefaultMissing:
+      "No default receiving account configured — set one in /settings before opening a sale",
+    receivingNotInScope:
+      "This receiving account is not usable in this branch — pick another",
+    receivingInactive: "This receiving account is inactive — pick another",
+    receivingLockedAfterConfirm:
+      "Confirmed sales cannot have their receiving account changed",
   },
   empty: {
     list: "No sales orders yet",
@@ -670,6 +720,10 @@ const EN: SalesDict = {
     linesSectionTitle: "Lots in this sale",
     lotsSummary: (firstLotNo, more) =>
       more > 0 ? `${firstLotNo} + ${more} more` : firstLotNo,
+    receivingSectionTitle: "Receiver / receiving account",
+    receivingPreviewLine: (entityName, bank) => `${entityName} · ${bank}`,
+    receivingMissingCta:
+      "No usable receiving accounts yet — add one in /settings first",
   },
 };
 

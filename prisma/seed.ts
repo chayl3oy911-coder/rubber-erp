@@ -248,6 +248,30 @@ const PERMISSIONS: ReadonlyArray<PermissionSeed> = [
     name: "ดูรายงาน",
     description: "ดูรายงานทั้งหมดของระบบ",
   },
+  {
+    code: "settings.receivingAccount.read",
+    module: "settings",
+    name: "ดูบัญชีรับเงิน / ขายในนาม",
+    description: "ดูข้อมูลผู้รับเงินและบัญชีธนาคารที่ใช้ออกใบขาย",
+  },
+  {
+    code: "settings.receivingAccount.create",
+    module: "settings",
+    name: "สร้างผู้รับเงิน / บัญชีรับเงิน",
+    description: "เพิ่มผู้รับเงิน (บริษัท/บุคคลธรรมดา) และบัญชีธนาคารใหม่",
+  },
+  {
+    code: "settings.receivingAccount.update",
+    module: "settings",
+    name: "แก้ไขผู้รับเงิน / บัญชีรับเงิน",
+    description: "แก้ไขข้อมูลผู้รับเงิน บัญชีธนาคาร และตั้งค่าเริ่มต้น/บัญชีหลัก",
+  },
+  {
+    code: "settings.receivingAccount.deactivate",
+    module: "settings",
+    name: "ปิดใช้งานผู้รับเงิน / บัญชีรับเงิน",
+    description: "ปิดใช้งาน (soft-delete) ผู้รับเงินหรือบัญชีธนาคาร",
+  },
 ];
 
 const SUPER_ADMIN_CODE = "super_admin";
@@ -270,7 +294,8 @@ const SUPER_ADMIN_CODE = "super_admin";
 const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
   // Branch manager — owns everything that happens inside their branch,
   // including approval and cancellation. Stock: full access. Sales: full
-  // (read/create/confirm/cancel).
+  // (read/create/confirm/cancel). Settings/receivingAccount: full inside
+  // own branch scope (service enforces; HQ-only/global entries are filtered).
   branch_manager: [
     "purchase.read",
     "purchase.create",
@@ -285,12 +310,27 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
     "sales.create",
     "sales.confirm",
     "sales.cancel",
+    "settings.receivingAccount.read",
+    "settings.receivingAccount.create",
+    "settings.receivingAccount.update",
+    "settings.receivingAccount.deactivate",
   ],
 
   // HQ admin — read-only across branches; transactional rights belong to the
   // branch_manager / super_admin level. Stock: read + audit only. Sales:
-  // read only (HQ doesn't transact, just observes).
-  hq_admin: ["purchase.read", "stock.read", "stock.audit", "sales.read"],
+  // read only (HQ doesn't transact, just observes). HQ owns the company-wide
+  // (`branchId = null`) ReceivingEntity master data — read/create/update,
+  // never deactivate (that should escalate to super_admin to avoid
+  // accidentally orphaning sales flows).
+  hq_admin: [
+    "purchase.read",
+    "stock.read",
+    "stock.audit",
+    "sales.read",
+    "settings.receivingAccount.read",
+    "settings.receivingAccount.create",
+    "settings.receivingAccount.update",
+  ],
 
   // Purchase staff — opens tickets and edits drafts, but cannot self-approve
   // or cancel (separation of duties). Stock: can also create lots from their
@@ -321,21 +361,36 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
 
   // Sales staff — front-line sales authoring. Creates DRAFT sales but
   // cannot self-confirm (confirm changes stock, separation of duties).
+  // Reads receiving accounts so the /sales/new picker can render — no
+  // edit rights (settings is HQ/branch-manager territory).
   sales_staff: [
     "purchase.read",
     "stock.read",
     "sales.read",
     "sales.create",
+    "settings.receivingAccount.read",
   ],
 
   // Cashier — reads sales for cash/payment reconciliation in future steps.
-  cashier: ["purchase.read", "stock.read", "sales.read"],
+  // Read access on receiving accounts to cross-check incoming payments
+  // against the bank account printed on the bill.
+  cashier: [
+    "purchase.read",
+    "stock.read",
+    "sales.read",
+    "settings.receivingAccount.read",
+  ],
 
   // Production staff — no sales visibility this round.
   production_staff: ["purchase.read", "stock.read"],
 
-  // Read-only oversight role.
-  viewer: ["purchase.read", "stock.read", "sales.read"],
+  // Read-only oversight role — sees everything but transacts nothing.
+  viewer: [
+    "purchase.read",
+    "stock.read",
+    "sales.read",
+    "settings.receivingAccount.read",
+  ],
 };
 
 // ─── Seeders ─────────────────────────────────────────────────────────────────

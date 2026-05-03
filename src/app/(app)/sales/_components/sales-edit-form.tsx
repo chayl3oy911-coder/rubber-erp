@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 
+import type { ReceivingEntityDTO } from "@/modules/receivingAccount/dto";
 import {
   replaceSalesLinesAction,
   updateSalesAction,
@@ -23,8 +24,10 @@ import type {
 } from "@/modules/sales/dto";
 import { salesT } from "@/modules/sales/i18n";
 import { SALE_TYPES } from "@/modules/sales/types";
+import { bankLabel } from "@/shared/banks";
 import { Card, CardContent, Input, Label } from "@/shared/ui";
 
+import { ReceivingAccountPicker } from "./receiving-account-picker";
 import { SalesLineRow } from "./sales-line-row";
 import { SalesLotPicker } from "./sales-lot-picker";
 
@@ -66,6 +69,12 @@ function lotToLine(lot: EligibleLotForSaleDTO): SalesLineFormValue {
 
 type Props = {
   sale: SalesOrderDTO;
+  /**
+   * Optional pre-fetched receiving entities for the DRAFT picker. When
+   * absent, the receiving section becomes a read-only snapshot — useful
+   * for CONFIRMED sales (where the picker is locked anyway).
+   */
+  receivingEntities?: ReadonlyArray<ReceivingEntityDTO>;
 };
 
 /**
@@ -81,13 +90,13 @@ type Props = {
  * This matches the API contract: PATCH /api/sales/[id] for header,
  * PUT /api/sales/[id]/lines for lines. Each form is its own submit.
  */
-export function SalesEditForm({ sale }: Props) {
+export function SalesEditForm({ sale, receivingEntities }: Props) {
   const isDraft = sale.status === "DRAFT";
   const isConfirmed = sale.status === "CONFIRMED";
 
   return (
     <div className="flex flex-col gap-4">
-      <HeaderEditForm sale={sale} />
+      <HeaderEditForm sale={sale} receivingEntities={receivingEntities} />
       {isDraft ? <LinesEditForm sale={sale} /> : null}
       {isConfirmed ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
@@ -100,7 +109,13 @@ export function SalesEditForm({ sale }: Props) {
 
 // ─── Header form (always visible while not CANCELLED) ────────────────────────
 
-function HeaderEditForm({ sale }: { sale: SalesOrderDTO }) {
+function HeaderEditForm({
+  sale,
+  receivingEntities,
+}: {
+  sale: SalesOrderDTO;
+  receivingEntities?: ReadonlyArray<ReceivingEntityDTO>;
+}) {
   const action = updateSalesAction.bind(null, sale.id);
   const [state, formAction, isPending] = useActionState<
     SalesActionState,
@@ -296,6 +311,28 @@ function HeaderEditForm({ sale }: { sale: SalesOrderDTO }) {
               ) : null}
             </div>
           </div>
+
+          {/* Receiving section — DRAFT picker, CONFIRMED snapshot. */}
+          {isDraft && receivingEntities ? (
+            <ReceivingAccountPicker
+              entities={receivingEntities}
+              branchId={sale.branchId}
+              initialEntityId={
+                v?.receivingEntityId ?? sale.receivingEntityId ?? undefined
+              }
+              initialBankAccountId={
+                v?.receivingBankAccountId ??
+                sale.receivingBankAccountId ??
+                undefined
+              }
+              entityFieldError={state.fieldErrors?.receivingEntityId}
+              bankAccountFieldError={
+                state.fieldErrors?.receivingBankAccountId
+              }
+            />
+          ) : (
+            <ReceivingSnapshot sale={sale} />
+          )}
 
           {state.error ? (
             <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
@@ -505,5 +542,74 @@ function LinesEditForm({ sale }: { sale: SalesOrderDTO }) {
         </div>
       </div>
     </form>
+  );
+}
+
+// ─── Receiving snapshot (read-only, used for CONFIRMED + post-cancel) ───────
+//
+// Pulls values from the snapshot columns (`receivingEntityNameSnapshot`,
+// etc.) so the bill prints the values that were committed at create time,
+// not the latest master-data state. Master-data edits never retro-apply.
+
+function ReceivingSnapshot({ sale }: { sale: SalesOrderDTO }) {
+  const hasAny =
+    sale.receivingEntityNameSnapshot ||
+    sale.receivingBankNameSnapshot ||
+    sale.receivingBankAccountNoSnapshot;
+  if (!hasAny) {
+    return (
+      <section className="flex flex-col gap-2">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          {t.misc.receivingSectionTitle}
+        </h3>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">—</p>
+      </section>
+    );
+  }
+  const bankName = sale.receivingBankNameSnapshot;
+  const bankDisplay = bankName ? bankLabel(bankName) ?? bankName : "—";
+  return (
+    <section className="flex flex-col gap-2">
+      <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        {t.misc.receivingSectionTitle}
+      </h3>
+      <dl className="grid grid-cols-1 gap-x-3 gap-y-1 rounded-lg border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/40 dark:text-zinc-300 sm:grid-cols-2">
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-zinc-500 dark:text-zinc-400">
+            {t.fields.receivingEntity}
+          </dt>
+          <dd className="font-medium text-zinc-900 dark:text-zinc-50">
+            {sale.receivingEntityNameSnapshot ?? "—"}
+          </dd>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-zinc-500 dark:text-zinc-400">
+            {t.fields.receivingBank}
+          </dt>
+          <dd className="text-zinc-900 dark:text-zinc-50">
+            {bankDisplay}
+            {sale.receivingBankAccountNoSnapshot
+              ? ` · ${sale.receivingBankAccountNoSnapshot}`
+              : ""}
+          </dd>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-zinc-500 dark:text-zinc-400">
+            {t.fields.receivingBankAccountName}
+          </dt>
+          <dd className="text-zinc-900 dark:text-zinc-50">
+            {sale.receivingBankAccountNameSnapshot ?? "—"}
+          </dd>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <dt className="text-zinc-500 dark:text-zinc-400">
+            {t.fields.receivingTaxId}
+          </dt>
+          <dd className="font-mono text-zinc-900 dark:text-zinc-50">
+            {sale.receivingTaxIdSnapshot ?? "—"}
+          </dd>
+        </div>
+      </dl>
+    </section>
   );
 }

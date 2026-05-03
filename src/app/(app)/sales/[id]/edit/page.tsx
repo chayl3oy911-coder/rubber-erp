@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { listReceivingEntities } from "@/modules/receivingAccount/service";
 import { salesT } from "@/modules/sales/i18n";
 import { getSalesOrder } from "@/modules/sales/service";
 import { requirePermission } from "@/shared/auth/dal";
@@ -28,6 +29,20 @@ export default async function EditSalesPage({
     redirect(`/sales/${sale.id}`);
   }
 
+  // Only DRAFT can edit receiving — fetch the picker list lazily so we
+  // skip the round-trip on CONFIRMED views.
+  const receivingEntities =
+    sale.status === "DRAFT"
+      ? (
+          await listReceivingEntities(me, {
+            branchScope: "all",
+            includeInactive: false,
+            page: 1,
+            pageSize: 200,
+          })
+        ).entities
+      : undefined;
+
   return (
     <div className="flex flex-col gap-5">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -50,7 +65,7 @@ export default async function EditSalesPage({
         </Link>
       </header>
 
-      <SalesEditForm sale={sale} />
+      <SalesEditForm sale={sale} receivingEntities={receivingEntities} />
     </div>
   );
 }

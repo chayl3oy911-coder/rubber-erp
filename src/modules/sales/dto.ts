@@ -136,6 +136,20 @@ export type SalesOrderDTO = {
   cancelledBy: SalesUserDTO | null;
   cancelReason: string | null;
   lines: SalesOrderLineDTO[];
+
+  // ── Receiving (ขายในนาม / บัญชีรับเงิน) ──
+  // Foreign keys are nullable for legacy rows from before Step 10.
+  // The *Snapshot fields freeze the displayed values at the moment of
+  // create/edit so historical bills don't shift if the master data is
+  // later edited or deactivated.
+  receivingEntityId: string | null;
+  receivingBankAccountId: string | null;
+  receivingEntityNameSnapshot: string | null;
+  receivingEntityTypeSnapshot: string | null;
+  receivingTaxIdSnapshot: string | null;
+  receivingBankNameSnapshot: string | null;
+  receivingBankAccountNoSnapshot: string | null;
+  receivingBankAccountNameSnapshot: string | null;
 };
 
 type SalesOrderWithRelations = SalesOrder & {
@@ -188,6 +202,14 @@ export function toSalesOrderDTO(s: SalesOrderWithRelations): SalesOrderDTO {
     cancelledBy: userDto(s.cancelledBy),
     cancelReason: s.cancelReason,
     lines: (s.lines ?? []).map(toSalesOrderLineDTO),
+    receivingEntityId: s.receivingEntityId,
+    receivingBankAccountId: s.receivingBankAccountId,
+    receivingEntityNameSnapshot: s.receivingEntityNameSnapshot,
+    receivingEntityTypeSnapshot: s.receivingEntityTypeSnapshot,
+    receivingTaxIdSnapshot: s.receivingTaxIdSnapshot,
+    receivingBankNameSnapshot: s.receivingBankNameSnapshot,
+    receivingBankAccountNoSnapshot: s.receivingBankAccountNoSnapshot,
+    receivingBankAccountNameSnapshot: s.receivingBankAccountNameSnapshot,
   };
 }
 

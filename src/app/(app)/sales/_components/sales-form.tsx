@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 
+import type { ReceivingEntityDTO } from "@/modules/receivingAccount/dto";
 import { createSalesAction } from "@/modules/sales/actions";
 import {
   EMPTY_SALES_STATE,
@@ -19,6 +20,7 @@ import { salesT } from "@/modules/sales/i18n";
 import { SALE_TYPES } from "@/modules/sales/types";
 import { Card, CardContent, Input, Label } from "@/shared/ui";
 
+import { ReceivingAccountPicker } from "./receiving-account-picker";
 import { SalesLineRow } from "./sales-line-row";
 import { SalesLotPicker } from "./sales-lot-picker";
 
@@ -36,6 +38,7 @@ type Props = {
   branches: ReadonlyArray<{ id: string; code: string; name: string }>;
   defaultBranchId: string;
   showBranchSelect: boolean;
+  receivingEntities: ReadonlyArray<ReceivingEntityDTO>;
 };
 
 function formatNumber(s: string | number, fractionDigits = 2): string {
@@ -73,6 +76,7 @@ export function SalesForm({
   branches,
   defaultBranchId,
   showBranchSelect,
+  receivingEntities,
 }: Props) {
   const [state, formAction, isPending] = useActionState<
     SalesActionState,
@@ -440,6 +444,20 @@ export function SalesForm({
                   ) : null}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Receiving / company-payment section */}
+          <Card>
+            <CardContent>
+              <ReceivingAccountPicker
+                entities={receivingEntities}
+                branchId={branchId}
+                initialEntityId={v?.receivingEntityId}
+                initialBankAccountId={v?.receivingBankAccountId}
+                entityFieldError={state.fieldErrors?.receivingEntityId}
+                bankAccountFieldError={state.fieldErrors?.receivingBankAccountId}
+              />
             </CardContent>
           </Card>
 
