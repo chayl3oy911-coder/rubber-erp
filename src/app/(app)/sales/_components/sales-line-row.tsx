@@ -2,6 +2,7 @@
 
 import { forwardRef } from "react";
 
+import { rubberTypeLabel } from "@/modules/purchase/rubber-types";
 import type { SalesLineFormValue } from "@/modules/sales/action-state";
 import { salesT } from "@/modules/sales/i18n";
 
@@ -72,7 +73,7 @@ export const SalesLineRow = forwardRef<HTMLInputElement, Props>(
           </span>
           {line.rubberType ? (
             <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-              {line.rubberType}
+              {rubberTypeLabel(line.rubberType) ?? line.rubberType}
             </span>
           ) : null}
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
@@ -108,6 +109,11 @@ export const SalesLineRow = forwardRef<HTMLInputElement, Props>(
               className={inputClass}
               value={line.grossWeight}
               onChange={(e) => onChangeGross(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+                  e.preventDefault();
+                }
+              }}
               disabled={disabled}
               required
             />

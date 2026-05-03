@@ -143,18 +143,30 @@ function HeaderEditForm({ sale }: { sale: SalesOrderDTO }) {
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="buyerName">{t.fields.buyerName}</Label>
+            <Label htmlFor="buyerName">
+              {t.fields.buyerName}
+              {isDraft ? <span className="text-red-600"> *</span> : null}
+            </Label>
             <Input
               id="buyerName"
               name="buyerName"
               value={buyerName}
               onChange={(e) => setBuyerName(e.target.value)}
               placeholder={t.placeholders.buyerName}
+              maxLength={200}
               disabled={!isDraft}
               required
+              aria-invalid={
+                state.fieldErrors?.buyerName ||
+                (isDraft && buyerName.trim().length === 0)
+                  ? true
+                  : undefined
+              }
             />
             {state.fieldErrors?.buyerName ? (
               <p className={errorTextClass}>{state.fieldErrors.buyerName}</p>
+            ) : isDraft && buyerName.trim().length === 0 ? (
+              <p className={errorTextClass}>{t.errors.buyerNameRequired}</p>
             ) : null}
           </div>
 
@@ -292,7 +304,13 @@ function HeaderEditForm({ sale }: { sale: SalesOrderDTO }) {
           ) : null}
 
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
-            <button type="submit" disabled={isPending} className={submitClass}>
+            <button
+              type="submit"
+              disabled={
+                isPending || (isDraft && buyerName.trim().length === 0)
+              }
+              className={submitClass}
+            >
               {isPending ? t.actions.saving : t.actions.saveDraft}
             </button>
           </div>

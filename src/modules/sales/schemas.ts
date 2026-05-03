@@ -24,14 +24,24 @@ const optionalText = (max: number, message: string) =>
     z.string().max(max, message).optional(),
   );
 
+/**
+ * Trim + required-non-empty text field.
+ *
+ * We coerce `null`/`undefined`/whitespace to `""` (rather than `undefined`)
+ * so the `min(1, requiredMsg)` branch fires with our custom Thai message —
+ * otherwise Zod would emit a generic `invalid_type: Required` error for
+ * `undefined` inputs and the localized message would be lost.
+ */
 const requiredText = (max: number, requiredMsg: string, tooLongMsg: string) =>
   z.preprocess(
     (v) => {
-      if (v === null || v === undefined) return undefined;
-      const s = String(v).trim();
-      return s === "" ? undefined : s;
+      if (v === null || v === undefined) return "";
+      return String(v).trim();
     },
-    z.string().min(1, requiredMsg).max(max, tooLongMsg),
+    z
+      .string({ error: requiredMsg })
+      .min(1, requiredMsg)
+      .max(max, tooLongMsg),
   );
 
 /**

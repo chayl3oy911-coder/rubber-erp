@@ -84,6 +84,7 @@ export function SalesForm({
   const [branchId, setBranchId] = useState<string>(
     v?.branchId ?? defaultBranchId,
   );
+  const [buyerName, setBuyerName] = useState<string>(v?.buyerName ?? "");
   const [saleType, setSaleType] = useState<string>(v?.saleType ?? "SALE");
   const [drcPercent, setDrcPercent] = useState<string>(v?.drcPercent ?? "");
   const [pricePerKg, setPricePerKg] = useState<string>(v?.pricePerKg ?? "");
@@ -91,6 +92,12 @@ export function SalesForm({
     v?.withholdingTaxPercent ?? "0",
   );
   const [lines, setLines] = useState<SalesLineFormValue[]>(v?.lines ?? []);
+
+  // Client-side mirror of the server's `requiredText` rule: trim the user
+  // input before deciding whether the bill can be submitted. Server still
+  // re-validates — this is purely to keep the submit button honest and
+  // avoid round-tripping an obvious empty value.
+  const buyerNameEmpty = buyerName.trim().length === 0;
 
   const lineRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
 
@@ -221,7 +228,11 @@ export function SalesForm({
   const linesJson = useMemo(() => JSON.stringify(lines), [lines]);
 
   const submitDisabled =
-    isPending || lines.length === 0 || anyExceeds || anyEmpty;
+    isPending ||
+    buyerNameEmpty ||
+    lines.length === 0 ||
+    anyExceeds ||
+    anyEmpty;
 
   return (
     <form action={formAction} className="contents">
@@ -272,17 +283,31 @@ export function SalesForm({
               )}
 
               <div className="flex flex-col gap-1.5">
-                <Label htmlFor="buyerName">{t.fields.buyerName}</Label>
+                <Label htmlFor="buyerName">
+                  {t.fields.buyerName}
+                  <span className="text-red-600"> *</span>
+                </Label>
                 <Input
                   id="buyerName"
                   name="buyerName"
-                  defaultValue={v?.buyerName ?? ""}
+                  value={buyerName}
+                  onChange={(e) => setBuyerName(e.target.value)}
                   placeholder={t.placeholders.buyerName}
+                  maxLength={200}
                   required
+                  aria-invalid={
+                    state.fieldErrors?.buyerName || buyerNameEmpty
+                      ? true
+                      : undefined
+                  }
                 />
                 {state.fieldErrors?.buyerName ? (
                   <p className={errorTextClass}>
                     {state.fieldErrors.buyerName}
+                  </p>
+                ) : buyerNameEmpty ? (
+                  <p className={errorTextClass}>
+                    {t.errors.buyerNameRequired}
                   </p>
                 ) : null}
               </div>

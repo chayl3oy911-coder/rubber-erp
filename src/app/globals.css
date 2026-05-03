@@ -23,3 +23,37 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/*
+ * Hide native number-input spinner arrows across the whole app.
+ *
+ * Why `-webkit-appearance: none` (not just `appearance: none`):
+ *   Chrome/Safari only honor the vendor-prefixed property on the
+ *   `::-webkit-inner-spin-button` / `::-webkit-outer-spin-button`
+ *   pseudo-elements. The unprefixed `appearance` alias is ignored there
+ *   in several releases, so the arrows kept showing up on /purchases/new.
+ *
+ * Why wrap in `@layer utilities`:
+ *   Tailwind v4's `@import "tailwindcss"` emits a preflight layer. Rules
+ *   in `utilities` reliably win over `base`, and also over any component
+ *   styles that forget to un-style number inputs.
+ *
+ * Correctness guarantees:
+ *   - Input type, value, validation, and keyboard behavior untouched.
+ *   - Users can still type digits / decimal point / arrow keys.
+ *   - `inputMode="decimal"` on forms keeps the mobile numeric pad.
+ *   - No calculation, schema, or server validation is affected.
+ */
+@layer utilities {
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    appearance: none;
+    margin: 0;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}

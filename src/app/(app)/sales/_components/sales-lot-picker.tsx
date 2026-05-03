@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 
+import { rubberTypeLabel } from "@/modules/purchase/rubber-types";
 import type { EligibleLotForSaleDTO } from "@/modules/sales/dto";
 import { salesT } from "@/modules/sales/i18n";
 import { Card, CardContent, Input } from "@/shared/ui";
@@ -181,7 +182,7 @@ export function SalesLotPicker({
                         {lot.lotNo}
                       </span>
                       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                        {lot.rubberType}
+                        {rubberTypeLabel(lot.rubberType) ?? lot.rubberType}
                       </span>
                       {lot.sourceTicket ? (
                         <span className="text-xs text-zinc-500 dark:text-zinc-400">

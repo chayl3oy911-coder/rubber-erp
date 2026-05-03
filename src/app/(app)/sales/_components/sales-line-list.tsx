@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { rubberTypeLabel } from "@/modules/purchase/rubber-types";
 import type { SalesOrderLineDTO } from "@/modules/sales/dto";
 import { salesT } from "@/modules/sales/i18n";
 
@@ -67,7 +68,9 @@ export function SalesLineList({ lines }: Props) {
                     <span className="text-zinc-500 dark:text-zinc-400">—</span>
                   )}
                 </td>
-                <td className="px-3 py-2">{l.rubberType}</td>
+                <td className="px-3 py-2">
+                  {rubberTypeLabel(l.rubberType) ?? l.rubberType}
+                </td>
                 <td className="px-3 py-2 text-xs text-zinc-600 dark:text-zinc-400">
                   {l.lot?.sourceTicket?.ticketNo ?? "—"}
                 </td>
@@ -105,7 +108,7 @@ export function SalesLineList({ lines }: Props) {
                 <span className="text-zinc-500 dark:text-zinc-400">—</span>
               )}
               <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-                {l.rubberType}
+                {rubberTypeLabel(l.rubberType) ?? l.rubberType}
               </span>
               {l.lot?.sourceTicket ? (
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">

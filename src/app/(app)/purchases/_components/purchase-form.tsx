@@ -530,6 +530,7 @@ function NumericField({
   error,
   hint,
   required,
+  inputMode = "decimal",
   ...rest
 }: NumericFieldProps) {
   return (
@@ -545,6 +546,7 @@ function NumericField({
         value={value}
         onChange={(e) => onValueChange(e.target.value)}
         required={required}
+        inputMode={inputMode}
         {...rest}
       />
       {error ? (
