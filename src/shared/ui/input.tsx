@@ -2,13 +2,14 @@ import {
   forwardRef,
   type InputHTMLAttributes,
   type KeyboardEvent,
+  type WheelEvent,
 } from "react";
 import { cn } from "@/shared/utils/cn";
 
 export type InputProps = InputHTMLAttributes<HTMLInputElement>;
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
-  { className, type = "text", onKeyDown, ...props },
+  { className, type = "text", onKeyDown, onWheel, ...props },
   ref,
 ) {
   // Block ↑/↓ from changing the value on number inputs. Typing/deleting still work.
@@ -23,11 +24,22 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
         }
       : onKeyDown;
 
+  // Block trackpad/mouse-wheel scroll from incrementing the value while focused.
+  // We blur (instead of preventDefault) so the page itself can still scroll.
+  const handleWheel =
+    type === "number"
+      ? (event: WheelEvent<HTMLInputElement>) => {
+          event.currentTarget.blur();
+          onWheel?.(event);
+        }
+      : onWheel;
+
   return (
     <input
       ref={ref}
       type={type}
       onKeyDown={handleKeyDown}
+      onWheel={handleWheel}
       className={cn(
         "h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none",
         "placeholder:text-zinc-400",

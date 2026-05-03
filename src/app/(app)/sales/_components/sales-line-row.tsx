@@ -114,6 +114,7 @@ export const SalesLineRow = forwardRef<HTMLInputElement, Props>(
                   e.preventDefault();
                 }
               }}
+              onWheel={(e) => e.currentTarget.blur()}
               disabled={disabled}
               required
             />
