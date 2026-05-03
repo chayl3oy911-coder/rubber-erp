@@ -170,7 +170,7 @@ export default async function PurchaseDetailPage({
               />
               <DetailRow
                 label={t.fields.pricePerKg}
-                value={`${formatNumber(purchase.pricePerKg, 4)} ${t.units.bahtPerKg}`}
+                value={`${formatNumber(purchase.pricePerKg, 2)} ${t.units.bahtPerKg}`}
               />
               <DetailRow
                 label={t.fields.totalAmount}

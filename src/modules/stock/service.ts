@@ -146,6 +146,7 @@ const STOCK_LOT_INCLUDE = {
       ticketNo: true,
       netWeight: true,
       totalAmount: true,
+      pricePerKg: true,
       status: true,
       isActive: true,
       customer: { select: { id: true, code: true, fullName: true } },
@@ -159,9 +160,33 @@ const MOVEMENT_INCLUDE = {
 
 // ─── Cost computation ────────────────────────────────────────────────────────
 //
-// Rounding is HALF_UP @ 4 dp on the rate so adjustments don't lose pennies.
-// `costAmount` itself never changes after lot creation — that's the whole
-// point of the lot-based model.
+// Rounding is HALF_UP @ 2 dp on the rate — aligned with pricePerKg / money
+// precision across the whole system. Reasons for 2 dp (not 4):
+//   (a) matches real-market practice and what users actually type in forms,
+//   (b) `StockLot.effectiveCostPerKg` column is `Decimal(14, 2)`, so a 4-dp
+//       in-memory value would be silently truncated by Postgres anyway,
+//   (c) UI never displays more than 2 dp — keeping maths in lockstep avoids
+//       "display says 42.12 but accounting spreadsheet says 42.1234" drift.
+//
+// `costAmount` semantics — updated as of the Sales SALES_OUT refactor:
+//
+//   - WATER_LOSS / DAMAGE / MANUAL_CORRECTION (ADJUST_OUT via `adjustStock`):
+//       costAmount UNCHANGED — sunk cost on the surviving weight.
+//       → effectiveCostPerKg RISES (same pennies, fewer kg).
+//
+//   - ADJUST_IN (restore accidentally-lost weight):
+//       costAmount UNCHANGED — no new money entered the lot.
+//       → effectiveCostPerKg FALLS back toward the original rate.
+//
+//   - SALES_OUT (via `confirmSale` in modules/sales/service.ts):
+//       costAmount SHRINKS by the line's sold cost, keeping the rate stable.
+//
+//   - CANCEL_REVERSE for SalesOrder (via `cancelConfirmedSale`):
+//       costAmount GROWS back by the exact line.costAmount snapshot.
+//
+// The functions in THIS file only handle the ADJUST_* path; the SALES_OUT
+// and CANCEL_REVERSE mutations live in the sales module because they
+// piggyback on the SalesOrderLine snapshot values.
 
 function computeEffectiveCostPerKg(
   costAmount: Prisma.Decimal,
@@ -174,7 +199,7 @@ function computeEffectiveCostPerKg(
   }
   return costAmount
     .div(remainingWeight)
-    .toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP);
+    .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
 }
 
 // ─── Scope helper ────────────────────────────────────────────────────────────

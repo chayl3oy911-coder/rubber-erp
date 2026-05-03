@@ -60,8 +60,8 @@ function decimalPlacesOf(value: number): number {
 
 // ─── Field schemas ──────────────────────────────────────────────────────────
 
-const grossField = numericInput
-  .refine((n) => n > 0, t.errors.grossPositive)
+const lineGrossField = numericInput
+  .refine((n) => n > 0, t.errors.lineGrossPositive)
   .refine((n) => decimalPlacesOf(n) <= 2, t.errors.weightTooManyDecimals);
 
 const drcField = numericInput
@@ -70,15 +70,15 @@ const drcField = numericInput
 
 const priceField = numericInput
   .refine((n) => n > 0, t.errors.pricePositive)
-  .refine((n) => decimalPlacesOf(n) <= 4, t.errors.priceTooManyDecimals);
+  .refine((n) => decimalPlacesOf(n) <= 2, t.errors.priceTooManyDecimals);
 
 const percentField = numericInput
   .refine((n) => n >= 0 && n <= 100, t.errors.percentRange)
   .refine((n) => decimalPlacesOf(n) <= 2, t.errors.percentTooManyDecimals);
 
-// `z.enum` (vs `z.string().refine(...)`) is essential: refine is only a
-// runtime predicate and does NOT narrow inferred TS type. Same trick used
-// in `purchase/schemas.ts → purchaseStatusEnum` and `stock/schemas.ts`.
+// `z.enum` (vs `z.string().refine`) is essential: refine is only a runtime
+// predicate and does NOT narrow the inferred TS type. Same trick used in
+// `purchase/schemas.ts → purchaseStatusEnum` and `stock/schemas.ts`.
 const saleTypeField = z.enum(
   SALE_TYPES as unknown as [SaleType, ...SaleType[]],
   { error: t.errors.saleTypeInvalid },
@@ -92,8 +92,6 @@ const statusField = z.enum(
   { error: t.errors.statusInvalid },
 );
 
-// `expectedReceiveDate` accepts ISO strings (YYYY-MM-DD or full ISO) and
-// coerces to a `Date`. Empty / blank → undefined so optional() applies.
 const optionalDate = z
   .preprocess(
     (v) => {
@@ -111,27 +109,53 @@ const optionalDate = z
   )
   .optional();
 
+// ─── Line schema ─────────────────────────────────────────────────────────────
+
+export const salesLineInputSchema = z.object({
+  stockLotId: uuid(t.errors.stockLotIdInvalid),
+  grossWeight: lineGrossField,
+});
+
+export type SalesLineInput = z.infer<typeof salesLineInputSchema>;
+
+const linesArrayField = z
+  .array(salesLineInputSchema)
+  .min(1, t.errors.linesEmpty)
+  // No hard upper bound — UI uses paginated picker. Service still has a
+  // `$transaction` timeout that bounds overall practical size.
+  .refine(
+    (arr) => {
+      const seen = new Set<string>();
+      for (const l of arr) {
+        if (seen.has(l.stockLotId)) return false;
+        seen.add(l.stockLotId);
+      }
+      return true;
+    },
+    { message: t.errors.duplicateLot },
+  );
+
 // ─── Create ──────────────────────────────────────────────────────────────────
 
 export const createSalesSchema = z.object({
   branchId: uuid(t.errors.branchInvalid),
-  stockLotId: uuid(t.errors.stockLotIdInvalid),
-  buyerName: requiredText(200, t.errors.buyerNameRequired, t.errors.buyerNameTooLong),
+  buyerName: requiredText(
+    200,
+    t.errors.buyerNameRequired,
+    t.errors.buyerNameTooLong,
+  ),
   saleType: saleTypeField,
-  grossWeight: grossField,
   drcPercent: drcField,
   pricePerKg: priceField,
   withholdingTaxPercent: percentField.optional().default(0),
   expectedReceiveDate: optionalDate,
   note: optionalText(1000, t.errors.noteTooLong),
+  lines: linesArrayField,
 });
 
 export type CreateSalesInput = z.infer<typeof createSalesSchema>;
 
-// ─── Update fields (DRAFT only) ──────────────────────────────────────────────
-//
-// All fields optional. The service further enforces "what fields are editable
-// in the current status".
+// ─── Update header (DRAFT: all listed fields. CONFIRMED: only note/expectedReceiveDate) ──
 
 export const updateSalesFieldsSchema = z
   .object({
@@ -141,7 +165,6 @@ export const updateSalesFieldsSchema = z
       t.errors.buyerNameTooLong,
     ).optional(),
     saleType: saleTypeField.optional(),
-    grossWeight: grossField.optional(),
     drcPercent: drcField.optional(),
     pricePerKg: priceField.optional(),
     withholdingTaxPercent: percentField.optional(),
@@ -154,6 +177,14 @@ export const updateSalesFieldsSchema = z
 
 export type UpdateSalesFieldsInput = z.infer<typeof updateSalesFieldsSchema>;
 
+// ─── Replace lines (DRAFT only) ──────────────────────────────────────────────
+
+export const replaceSalesLinesSchema = z.object({
+  lines: linesArrayField,
+});
+
+export type ReplaceSalesLinesInput = z.infer<typeof replaceSalesLinesSchema>;
+
 // ─── Status transition ───────────────────────────────────────────────────────
 
 export const transitionStatusSchema = z.object({
@@ -165,7 +196,8 @@ export type TransitionSalesStatusInput = z.infer<typeof transitionStatusSchema>;
 
 // ─── PATCH body discriminator ────────────────────────────────────────────────
 //
-// API enforces "either fields OR status, not both" so dispatch is unambiguous.
+// Either fields OR status, not both. Lines have their own dedicated PUT
+// endpoint (`/api/sales/[id]/lines`) so this PATCH never deals with lines.
 
 export const patchSalesSchema = z
   .object({
@@ -177,7 +209,6 @@ export const patchSalesSchema = z
       t.errors.buyerNameTooLong,
     ).optional(),
     saleType: saleTypeField.optional(),
-    grossWeight: grossField.optional(),
     drcPercent: drcField.optional(),
     pricePerKg: priceField.optional(),
     withholdingTaxPercent: percentField.optional(),
@@ -194,7 +225,6 @@ export const patchSalesSchema = z
 function hasAnyFieldUpdate(d: {
   buyerName?: unknown;
   saleType?: unknown;
-  grossWeight?: unknown;
   drcPercent?: unknown;
   pricePerKg?: unknown;
   withholdingTaxPercent?: unknown;
@@ -204,7 +234,6 @@ function hasAnyFieldUpdate(d: {
   return (
     d.buyerName !== undefined ||
     d.saleType !== undefined ||
-    d.grossWeight !== undefined ||
     d.drcPercent !== undefined ||
     d.pricePerKg !== undefined ||
     d.withholdingTaxPercent !== undefined ||
@@ -215,7 +244,7 @@ function hasAnyFieldUpdate(d: {
 
 export type PatchSalesInput = z.infer<typeof patchSalesSchema>;
 
-// ─── List query ──────────────────────────────────────────────────────────────
+// ─── List query (sales) ──────────────────────────────────────────────────────
 
 const MAX_PAGE_SIZE = 200;
 const DEFAULT_PAGE_SIZE = 50;
@@ -313,9 +342,14 @@ export const listSalesMovementsQuerySchema = z.object({
   pageSize: pageSizeField,
 });
 
-export type ListSalesMovementsQuery = z.infer<typeof listSalesMovementsQuerySchema>;
+export type ListSalesMovementsQuery = z.infer<
+  typeof listSalesMovementsQuerySchema
+>;
 
-// ─── Eligible lots query (for /sales/new lot picker) ─────────────────────────
+// ─── Eligible lots query (for /sales/new picker — paginated + searchable) ───
+//
+// PageSize default 50, max 200 — lines per sales bill is unbounded so the
+// picker MUST paginate. UI uses a "load more" pattern (no jump-to-page).
 
 export const listEligibleLotsForSaleQuerySchema = z.object({
   q: z
@@ -325,19 +359,8 @@ export const listEligibleLotsForSaleQuerySchema = z.object({
     )
     .optional(),
   branchId: optionalUuid,
-  // Capped tightly — this powers a simple <select>; it's not a paginated UI.
-  // Future: convert to a debounced picker if `> limit` lots are common.
-  limit: z
-    .preprocess(
-      (v) => {
-        if (v === undefined || v === null || v === "") return 100;
-        const n = Number(v);
-        if (!Number.isFinite(n)) return 100;
-        return Math.min(200, Math.max(1, Math.floor(n)));
-      },
-      z.number().int().min(1).max(200).default(100),
-    )
-    .default(100),
+  page: pageField,
+  pageSize: pageSizeField,
 });
 
 export type ListEligibleLotsForSaleQuery = z.infer<

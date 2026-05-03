@@ -39,6 +39,19 @@ function formatDateOnly(iso: string): string {
   });
 }
 
+/**
+ * Compact lots column.
+ *  - 0 lines → "—"
+ *  - 1 line  → "LOT000001"
+ *  - N lines → "LOT000001 + อีก {N-1} รายการ"
+ */
+function lotsSummary(s: SalesOrderDTO): string {
+  if (s.lines.length === 0) return "—";
+  const first = s.lines[0]?.lot?.lotNo ?? "—";
+  const more = s.lines.length - 1;
+  return t.misc.lotsSummary(first, more);
+}
+
 export function SalesList({
   sales,
   searchTerm,
@@ -71,11 +84,10 @@ export function SalesList({
                       {s.buyerName}
                     </span>
                     <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                      {s.sourceLot ? s.sourceLot.lotNo : "—"}
+                      {lotsSummary(s)}
                       {showBranchColumn && s.branch
                         ? ` · ${s.branch.code}`
                         : ""}
-                      {s.rubberType ? ` · ${s.rubberType}` : ""}
                     </span>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">
@@ -85,9 +97,9 @@ export function SalesList({
                 </div>
                 <dl className="flex flex-col gap-1 text-sm text-zinc-600 dark:text-zinc-400">
                   <div className="flex justify-between gap-3">
-                    <dt className="min-w-0">{t.fields.grossWeight}</dt>
+                    <dt className="min-w-0">{t.fields.grossWeightTotal}</dt>
                     <dd className="whitespace-nowrap text-right tabular-nums">
-                      {formatNumber(s.grossWeight, 2)} {t.units.kg}
+                      {formatNumber(s.grossWeightTotal, 2)} {t.units.kg}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
@@ -135,7 +147,7 @@ export function SalesList({
                   </th>
                 ) : null}
                 <th className="whitespace-nowrap px-4 py-3">
-                  {t.fields.sourceLot}
+                  {t.fields.lots}
                 </th>
                 <th className="whitespace-nowrap px-4 py-3">
                   {t.fields.buyerName}
@@ -144,7 +156,7 @@ export function SalesList({
                   {t.fields.saleType}
                 </th>
                 <th className="whitespace-nowrap px-4 py-3 text-right">
-                  {t.fields.grossWeight}
+                  {t.fields.grossWeightTotal}
                 </th>
                 <th className="whitespace-nowrap px-4 py-3 text-right">
                   {t.fields.drcPercent}
@@ -178,7 +190,7 @@ export function SalesList({
                     </td>
                   ) : null}
                   <td className="whitespace-nowrap px-4 py-3 text-zinc-700 dark:text-zinc-300">
-                    {s.sourceLot ? s.sourceLot.lotNo : "—"}
+                    {lotsSummary(s)}
                   </td>
                   <td className="px-4 py-3 text-zinc-900 dark:text-zinc-50">
                     {s.buyerName}
@@ -187,7 +199,7 @@ export function SalesList({
                     <SaleTypeBadge type={s.saleType} size="sm" />
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {formatNumber(s.grossWeight, 2)}
+                    {formatNumber(s.grossWeightTotal, 2)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
                     {formatNumber(s.drcPercent, 2)}

@@ -55,7 +55,13 @@ type StockDict = {
     rubberType: string;
     initialWeight: string;
     remainingWeight: string;
+    /** ต้นทุนรับเข้ารวม (landed total at receive time) */
+    initialCostAmount: string;
+    /** ราคาซื้อ/กก. (landed rate at receive time) */
+    initialCostPerKg: string;
+    /** ต้นทุนคงเหลือ (current costAmount — decreases on SALES_OUT) */
     costAmount: string;
+    /** ต้นทุนปัจจุบัน/กก. (current effectiveCostPerKg) */
     effectiveCostPerKg: string;
     status: string;
     createdAt: string;
@@ -195,7 +201,9 @@ const TH: StockDict = {
     rubberType: "ชนิดยาง",
     initialWeight: "น้ำหนักรับเข้า",
     remainingWeight: "น้ำหนักคงเหลือ",
-    costAmount: "ต้นทุนรวม",
+    initialCostAmount: "ต้นทุนรับเข้ารวม",
+    initialCostPerKg: "ราคาซื้อ/กก.",
+    costAmount: "ต้นทุนคงเหลือ",
     effectiveCostPerKg: "ต้นทุนปัจจุบัน/กก.",
     status: "สถานะ",
     createdAt: "สร้างเมื่อ",
@@ -220,12 +228,12 @@ const TH: StockDict = {
   },
   hints: {
     autoLotNo: "ระบบจะสร้างเลข Lot ให้อัตโนมัติ (เช่น LOT000001)",
-    serverComputedCostPerKg: "ระบบคำนวณจาก ต้นทุนรวม ÷ น้ำหนักคงเหลือ",
+    serverComputedCostPerKg: "ระบบคำนวณจาก ต้นทุนคงเหลือ ÷ น้ำหนักคงเหลือ",
     serverComputedAfter:
       "น้ำหนักหลังคำนวณจาก น้ำหนักคงเหลือ ± จำนวนที่ปรับ",
     weightDecimals: "ทศนิยมได้สูงสุด 2 ตำแหน่ง",
     waterLossExplain:
-      "การปรับน้ำหนักนี้จะไม่กระทบใบรับซื้อ — ต้นทุนรวมคงเดิม แต่ต้นทุน/กก. จะเพิ่มขึ้นตามน้ำหนักที่เหลือ",
+      "การปรับน้ำหนักนี้จะไม่กระทบใบรับซื้อ — ต้นทุนคงเหลือคงเดิม แต่ต้นทุน/กก. จะเพิ่มขึ้นตามน้ำหนักที่เหลือ",
     adjustmentNoteRequired: "ต้องระบุหมายเหตุทุกครั้งที่ปรับ Stock",
     fromPurchaseExplain:
       "เมื่อกด \"สร้าง Stock Lot\" ระบบจะสร้าง Lot และบันทึก movement ประเภท PURCHASE_IN ในรายการเดียว",
@@ -363,8 +371,10 @@ const EN: StockDict = {
     rubberType: "Rubber type",
     initialWeight: "Initial weight",
     remainingWeight: "Remaining weight",
-    costAmount: "Cost amount",
-    effectiveCostPerKg: "Effective cost / kg",
+    initialCostAmount: "Landed cost (total)",
+    initialCostPerKg: "Purchase price / kg",
+    costAmount: "Remaining cost",
+    effectiveCostPerKg: "Current cost / kg",
     status: "Status",
     createdAt: "Created at",
     createdBy: "Created by",
@@ -389,11 +399,11 @@ const EN: StockDict = {
   hints: {
     autoLotNo: "Lot number is auto-generated (e.g. LOT000001)",
     serverComputedCostPerKg:
-      "Server-computed: cost amount ÷ remaining weight",
+      "Server-computed: remaining cost ÷ remaining weight",
     serverComputedAfter: "Server-computed: remaining weight ± adjustment qty",
     weightDecimals: "Up to 2 decimal places",
     waterLossExplain:
-      "This adjustment does NOT modify the source purchase ticket. Cost amount stays the same; effective cost per kg rises proportionally.",
+      "This adjustment does NOT modify the source purchase ticket. Remaining cost stays the same; current cost per kg rises proportionally.",
     adjustmentNoteRequired: "A note is required for every stock adjustment.",
     fromPurchaseExplain:
       "Clicking \"Create stock lot\" creates the lot and a single PURCHASE_IN movement atomically.",

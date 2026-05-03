@@ -8,7 +8,9 @@ import {
 import {
   SalesAutoGenError,
   SalesBranchNotInScopeError,
+  SalesDuplicateLotError,
   SalesInsufficientStockError,
+  SalesLinesEmptyError,
   SalesStockLotBranchMismatchError,
   SalesStockLotInactiveError,
   SalesStockLotNotActiveError,
@@ -107,7 +109,9 @@ export async function POST(request: NextRequest) {
     }
     if (
       error instanceof SalesStockLotInactiveError ||
-      error instanceof SalesStockLotNotActiveError
+      error instanceof SalesStockLotNotActiveError ||
+      error instanceof SalesLinesEmptyError ||
+      error instanceof SalesDuplicateLotError
     ) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

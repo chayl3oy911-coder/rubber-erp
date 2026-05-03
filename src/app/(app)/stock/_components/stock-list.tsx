@@ -101,15 +101,28 @@ export function StockList({
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3">
+                    <dt className="min-w-0">{t.fields.initialCostPerKg}</dt>
+                    <dd className="whitespace-nowrap text-right tabular-nums">
+                      {formatNumber(l.initialCostPerKg, 2)}{" "}
+                      {t.units.bahtPerKg}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="min-w-0">{t.fields.initialCostAmount}</dt>
+                    <dd className="whitespace-nowrap text-right tabular-nums">
+                      {formatNumber(l.initialCostAmount, 2)} {t.units.baht}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-3 font-semibold text-zinc-900 dark:text-zinc-50">
                     <dt className="min-w-0">{t.fields.costAmount}</dt>
                     <dd className="whitespace-nowrap text-right tabular-nums">
                       {formatNumber(l.costAmount, 2)} {t.units.baht}
                     </dd>
                   </div>
-                  <div className="flex justify-between gap-3">
+                  <div className="flex justify-between gap-3 font-semibold text-zinc-900 dark:text-zinc-50">
                     <dt className="min-w-0">{t.fields.effectiveCostPerKg}</dt>
                     <dd className="whitespace-nowrap text-right tabular-nums">
-                      {formatNumber(l.effectiveCostPerKg, 4)}{" "}
+                      {formatNumber(l.effectiveCostPerKg, 2)}{" "}
                       {t.units.bahtPerKg}
                     </dd>
                   </div>
@@ -131,7 +144,7 @@ export function StockList({
       */}
       <div className="hidden overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm lg:block dark:border-zinc-800 dark:bg-zinc-950">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
               <tr>
                 <th className="whitespace-nowrap px-4 py-3">
@@ -156,6 +169,9 @@ export function StockList({
                 </th>
                 <th className="whitespace-nowrap px-4 py-3 text-right">
                   {t.fields.remainingWeight}
+                </th>
+                <th className="whitespace-nowrap px-4 py-3 text-right">
+                  {t.fields.initialCostPerKg}
                 </th>
                 <th className="whitespace-nowrap px-4 py-3 text-right">
                   {t.fields.costAmount}
@@ -209,11 +225,14 @@ export function StockList({
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
                     {formatNumber(l.remainingWeight, 2)}
                   </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-zinc-600 dark:text-zinc-400">
+                    {formatNumber(l.initialCostPerKg, 2)}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-zinc-900 dark:text-zinc-50">
                     {formatNumber(l.costAmount, 2)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {formatNumber(l.effectiveCostPerKg, 4)}
+                  <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
+                    {formatNumber(l.effectiveCostPerKg, 2)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3">
                     <LotStatusBadge status={l.status} size="sm" />

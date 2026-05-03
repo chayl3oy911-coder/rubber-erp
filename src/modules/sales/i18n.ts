@@ -1,5 +1,5 @@
 /**
- * Sales module — module-local i18n dictionary.
+ * Sales module — module-local i18n dictionary (multi-lot edition).
  *
  * Default locale: Thai. Components must never hardcode strings — they go
  * through `salesT()` so locale switching is data-only.
@@ -29,23 +29,25 @@ type SalesDict = {
     detailTitle: string;
     editTitle: string;
     editSubtitle: (status: string) => string;
+    pickerTitle: string;
+    pickerSubtitle: string;
+    cartTitle: string;
+    cartEmpty: string;
   };
   fields: {
     salesNo: string;
     branch: string;
-    sourceLot: string;
     rubberType: string;
     buyerName: string;
     saleType: string;
-    grossWeight: string;
     drcPercent: string;
-    drcWeight: string;
+    drcWeightTotal: string;
+    grossWeightTotal: string;
     pricePerKg: string;
     grossAmount: string;
     withholdingTaxPercent: string;
     withholdingTaxAmount: string;
     netReceivableAmount: string;
-    costPerKg: string;
     costAmount: string;
     profitAmount: string;
     status: string;
@@ -64,6 +66,15 @@ type SalesDict = {
     movementQuantity: string;
     movementBefore: string;
     movementAfter: string;
+    // ── Lot picker / line table fields ──
+    lotNo: string;
+    sourceTicket: string;
+    customer: string;
+    remainingWeight: string;
+    effectiveCostPerKg: string;
+    lineGrossWeight: string;
+    lineCostAmount: string;
+    lots: string;
   };
   units: {
     kg: string;
@@ -86,10 +97,12 @@ type SalesDict = {
     drcDoesNotDriveStock: string;
     confirmCutsStock: string;
     cancelReversesStock: string;
+    addLotDefaultsToRemaining: string;
+    canSellPartialLot: string;
   };
   placeholders: {
     listSearch: string;
-    selectLot: string;
+    pickerSearch: string;
     selectBranch: string;
     selectSaleType: string;
     selectStatus: string;
@@ -115,6 +128,12 @@ type SalesDict = {
     clear: string;
     prev: string;
     next: string;
+    addToBill: string;
+    alreadyAdded: string;
+    useAllRemaining: string;
+    removeLine: string;
+    loadMore: string;
+    saveLines: string;
   };
   errors: {
     invalidJson: string;
@@ -133,9 +152,9 @@ type SalesDict = {
     buyerNameTooLong: string;
     saleTypeInvalid: string;
     rubberTypeInvalid: string;
-    grossPositive: string;
     weightTooManyDecimals: string;
     insufficientStock: string;
+    insufficientStockOnLot: (lotNo: string) => string;
     drcRange: string;
     drcTooManyDecimals: string;
     pricePositive: string;
@@ -148,17 +167,22 @@ type SalesDict = {
     statusInvalid: string;
     statusTransitionForbidden: (from: string, to: string) => string;
     statusFieldsLocked: string;
+    linesLocked: string;
     cancelReasonRequired: string;
     cancelReasonTooLong: string;
     nothingToUpdate: string;
     fieldsAndStatusMixed: string;
     autoGenFailed: string;
     salesNoConflict: string;
+    linesEmpty: string;
+    duplicateLot: string;
+    lineGrossPositive: string;
   };
   empty: {
     list: string;
     noResults: (q: string) => string;
     noEligibleLots: string;
+    noEligibleLotsForSearch: (q: string) => string;
     noBranches: string;
     noMovements: string;
   };
@@ -173,15 +197,15 @@ type SalesDict = {
   };
   preview: {
     title: string;
-    grossWeight: string;
-    drcWeight: string;
+    grossWeightTotal: string;
+    drcWeightTotal: string;
     grossAmount: string;
     withholdingTaxAmount: string;
     netReceivableAmount: string;
-    costPerKg: string;
     costAmount: string;
     profitAmount: string;
     warningInsufficient: string;
+    linesCount: (n: number) => string;
   };
   misc: {
     paginationInfo: (from: number, to: number, total: number) => string;
@@ -189,6 +213,8 @@ type SalesDict = {
     documentReadyHint: string;
     movementHistoryTitle: string;
     salesSnapshotTitle: string;
+    linesSectionTitle: string;
+    lotsSummary: (firstLotNo: string, more: number) => string;
   };
 };
 
@@ -200,28 +226,31 @@ const TH: SalesDict = {
       `แสดงเฉพาะใบขายในสาขาที่บัญชีของคุณเข้าถึงได้ (${count} สาขา)`,
     newTitle: "เปิดใบขายใหม่",
     newSubtitle:
-      "เลือก Stock Lot และระบุข้อมูลขาย ระบบจะออกเลขใบขายให้อัตโนมัติ (สถานะเริ่มต้น: DRAFT)",
+      "ค้นหา Stock Lot ที่ต้องการขาย กดเพิ่มเข้าบิลแล้วปรับน้ำหนักได้ (สถานะเริ่มต้น: DRAFT)",
     detailTitle: "รายละเอียดใบขาย",
     editTitle: "แก้ไขใบขาย",
     editSubtitle: (status) =>
       `กำลังแก้ไขในสถานะ "${status}" — ฟิลด์ที่แก้ได้ขึ้นกับสถานะ`,
+    pickerTitle: "เลือก Stock Lot",
+    pickerSubtitle:
+      "ค้นหา lotNo / เลขใบรับซื้อ / ชื่อลูกค้า / ชนิดยาง — กด “เพิ่มเข้าบิล” เพื่อใส่ในใบขาย",
+    cartTitle: "รายการในบิลขาย",
+    cartEmpty: "ยังไม่มี Stock Lot ในบิลนี้ กดเพิ่มจากรายการด้านซ้าย",
   },
   fields: {
     salesNo: "เลขที่ใบขาย",
     branch: "สาขา",
-    sourceLot: "Stock Lot ต้นทาง",
     rubberType: "ชนิดยาง",
     buyerName: "ชื่อโรงงาน/ผู้รับซื้อ",
     saleType: "ประเภทการขาย",
-    grossWeight: "น้ำหนักจริง (Wet)",
     drcPercent: "DRC (%)",
-    drcWeight: "น้ำหนัก DRC (Dry)",
+    drcWeightTotal: "น้ำหนัก DRC รวม",
+    grossWeightTotal: "น้ำหนักจริงรวม (Wet)",
     pricePerKg: "ราคา/กก. (DRC)",
     grossAmount: "ยอดขายรวม",
     withholdingTaxPercent: "ภาษีหัก ณ ที่จ่าย (%)",
     withholdingTaxAmount: "ยอดภาษีหัก ณ ที่จ่าย",
     netReceivableAmount: "ยอดสุทธิที่รอรับ",
-    costPerKg: "ต้นทุน/กก. (Wet)",
     costAmount: "ต้นทุนรวม",
     profitAmount: "กำไรประมาณการ",
     status: "สถานะ",
@@ -240,6 +269,14 @@ const TH: SalesDict = {
     movementQuantity: "จำนวน",
     movementBefore: "ก่อน",
     movementAfter: "หลัง",
+    lotNo: "Lot",
+    sourceTicket: "ใบรับซื้อ",
+    customer: "ลูกค้า",
+    remainingWeight: "คงเหลือ",
+    effectiveCostPerKg: "ต้นทุน/กก.",
+    lineGrossWeight: "น้ำหนักที่ขาย (Wet)",
+    lineCostAmount: "ต้นทุนรายการนี้",
+    lots: "Lots",
   },
   units: {
     kg: "กก.",
@@ -249,26 +286,30 @@ const TH: SalesDict = {
   },
   hints: {
     autoSalesNo: "ระบบจะสร้างเลขที่ใบขายให้อัตโนมัติ (เช่น SAL000001)",
-    serverComputedDrcWeight: "ระบบคำนวณจาก น้ำหนักจริง × DRC ÷ 100",
-    serverComputedGrossAmount: "ระบบคำนวณจาก น้ำหนัก DRC × ราคา/กก.",
+    serverComputedDrcWeight: "ระบบคำนวณจาก น้ำหนักจริงรวม × DRC ÷ 100",
+    serverComputedGrossAmount: "ระบบคำนวณจาก น้ำหนัก DRC รวม × ราคา/กก.",
     serverComputedTax: "ระบบคำนวณจาก ยอดขายรวม × ภาษี ÷ 100",
     serverComputedNet: "ระบบคำนวณจาก ยอดขายรวม − ภาษี",
-    serverComputedCost: "ระบบคำนวณจาก น้ำหนักจริง × ต้นทุน/กก. ของ Lot",
+    serverComputedCost: "ระบบคำนวณจาก Σ (น้ำหนักจริง × ต้นทุน/กก.) ของแต่ละ Lot",
     serverComputedProfit: "ระบบคำนวณจาก ยอดขายรวม − ต้นทุนรวม",
     weightDecimals: "ทศนิยมได้สูงสุด 2 ตำแหน่ง",
-    priceDecimals: "ทศนิยมได้สูงสุด 4 ตำแหน่ง",
+    priceDecimals: "ทศนิยมได้สูงสุด 2 ตำแหน่ง",
     percentDecimals: "ทศนิยมได้สูงสุด 2 ตำแหน่ง",
-    grossDrivesStock: "น้ำหนักจริง (Wet) เป็นค่าที่ใช้ตัด Stock เท่านั้น",
+    grossDrivesStock: "น้ำหนักจริง (Wet) แต่ละ Lot คือค่าที่ใช้ตัด Stock เท่านั้น",
     drcDoesNotDriveStock:
-      "น้ำหนัก DRC (Dry) ใช้คำนวณยอดขายเท่านั้น ไม่กระทบ Stock",
+      "DRC% ใช้คำนวณยอดขายระดับบิลเท่านั้น ไม่กระทบ Stock",
     confirmCutsStock:
-      "เมื่อยืนยันใบขาย ระบบจะตัด Stock อัตโนมัติด้วย SALES_OUT",
+      "เมื่อยืนยันใบขาย ระบบจะตัด Stock อัตโนมัติด้วย SALES_OUT แยกตาม Lot",
     cancelReversesStock:
-      "ยกเลิกใบที่ยืนยันแล้ว ระบบจะคืนน้ำหนักกลับเข้า Lot ผ่าน CANCEL_REVERSE",
+      "ยกเลิกใบที่ยืนยันแล้ว ระบบจะคืนน้ำหนักกลับเข้าแต่ละ Lot ผ่าน CANCEL_REVERSE",
+    addLotDefaultsToRemaining:
+      "กดเพิ่มเข้าบิล ระบบจะใส่น้ำหนักเท่ากับคงเหลือของ Lot นั้นให้ก่อน",
+    canSellPartialLot:
+      "ขายบางส่วนได้ — แก้ตัวเลขลงเพื่อขายเพียงบางส่วน Lot ที่เหลือยังขายในบิลอื่นต่อได้",
   },
   placeholders: {
     listSearch: "ค้นหา เลขใบขาย / Lot / ชื่อผู้รับซื้อ",
-    selectLot: "— เลือก Stock Lot —",
+    pickerSearch: "ค้นหา Lot / ใบรับซื้อ / ลูกค้า / ชนิดยาง",
     selectBranch: "— เลือกสาขา —",
     selectSaleType: "— เลือกประเภท —",
     selectStatus: "ทุกสถานะ",
@@ -288,7 +329,7 @@ const TH: SalesDict = {
     confirmCancelPrompt: (salesNo) =>
       `ยืนยันการยกเลิกใบขาย ${salesNo}? ถ้าใบยืนยันแล้ว ระบบจะคืน Stock อัตโนมัติ`,
     edit: "แก้ไข",
-    back: "← กลับไปยังรายการ",
+    back: "← กลับ",
     detail: "ดูรายละเอียด",
     saving: "กำลังบันทึก...",
     showInactive: "แสดงที่ปิดใช้งานด้วย",
@@ -296,6 +337,12 @@ const TH: SalesDict = {
     clear: "ล้าง",
     prev: "← ก่อนหน้า",
     next: "ถัดไป →",
+    addToBill: "+ เพิ่มเข้าบิล",
+    alreadyAdded: "อยู่ในบิลแล้ว",
+    useAllRemaining: "ใช้ทั้งหมด",
+    removeLine: "ลบ",
+    loadMore: "โหลดเพิ่ม",
+    saveLines: "บันทึกรายการ Lot",
   },
   errors: {
     invalidJson: "รูปแบบข้อมูลไม่ถูกต้อง",
@@ -315,14 +362,15 @@ const TH: SalesDict = {
     buyerNameTooLong: "ชื่อผู้รับซื้อยาวเกิน 200 ตัวอักษร",
     saleTypeInvalid: "ประเภทการขายไม่ถูกต้อง",
     rubberTypeInvalid: "ชนิดยางไม่ถูกต้อง",
-    grossPositive: "น้ำหนักจริงต้องมากกว่า 0",
     weightTooManyDecimals: "น้ำหนักมีทศนิยมเกิน 2 ตำแหน่ง",
     insufficientStock:
       "น้ำหนักที่ระบุเกินน้ำหนักคงเหลือใน Lot — ไม่สามารถดำเนินการ",
+    insufficientStockOnLot: (lotNo) =>
+      `Lot ${lotNo} มีน้ำหนักไม่พอตามที่ระบุ — กรุณาแก้ไขจำนวน`,
     drcRange: "DRC ต้องอยู่ระหว่าง 0–100",
     drcTooManyDecimals: "DRC มีทศนิยมเกิน 2 ตำแหน่ง",
     pricePositive: "ราคา/กก. ต้องมากกว่า 0",
-    priceTooManyDecimals: "ราคา/กก. มีทศนิยมเกิน 4 ตำแหน่ง",
+    priceTooManyDecimals: "ราคา/กก. มีทศนิยมเกิน 2 ตำแหน่ง",
     percentRange: "เปอร์เซ็นต์ต้องอยู่ระหว่าง 0–100",
     percentTooManyDecimals: "เปอร์เซ็นต์มีทศนิยมเกิน 2 ตำแหน่ง",
     expectedDateInvalid: "วันที่คาดรับเงินไม่ถูกต้อง",
@@ -332,6 +380,8 @@ const TH: SalesDict = {
     statusTransitionForbidden: (from, to) =>
       `ไม่สามารถเปลี่ยนสถานะจาก "${from}" เป็น "${to}"`,
     statusFieldsLocked: "ฟิลด์นี้ถูกล็อกตามสถานะปัจจุบัน",
+    linesLocked:
+      "ใบนี้ยืนยัน/ยกเลิกแล้ว — แก้รายการ Lot ไม่ได้ ถ้าต้องแก้ ให้เปิดบิลใหม่",
     cancelReasonRequired: "ต้องระบุเหตุผลเมื่อยกเลิกใบที่ยืนยันแล้ว",
     cancelReasonTooLong: "เหตุผลยาวเกิน 500 ตัวอักษร",
     nothingToUpdate: "ไม่มีข้อมูลที่จะอัปเดต",
@@ -339,12 +389,16 @@ const TH: SalesDict = {
       "ห้ามแก้ฟิลด์และเปลี่ยนสถานะในคำขอเดียวกัน กรุณาทำแยก",
     autoGenFailed: "ระบบสร้างเลขที่ใบขายไม่สำเร็จ กรุณาลองอีกครั้ง",
     salesNoConflict: "เลขที่ใบขายชนกัน กรุณาลองอีกครั้ง",
+    linesEmpty: "ต้องมีอย่างน้อย 1 Lot ในใบขาย",
+    duplicateLot: "Lot นี้อยู่ในบิลอยู่แล้ว ห้ามเพิ่มซ้ำ",
+    lineGrossPositive: "น้ำหนักของแต่ละ Lot ต้องมากกว่า 0",
   },
   empty: {
     list: "ยังไม่มีใบขายในระบบ",
     noResults: (q) => `ไม่พบใบขายที่ตรงกับ "${q}"`,
     noEligibleLots:
       "ยังไม่มี Stock Lot ที่ขายได้ (ต้อง ACTIVE และมีน้ำหนักคงเหลือ > 0)",
+    noEligibleLotsForSearch: (q) => `ไม่พบ Stock Lot ที่ตรงกับ "${q}"`,
     noBranches: "บัญชีของคุณยังไม่ได้ผูกสาขา ติดต่อผู้ดูแลระบบ",
     noMovements: "ยังไม่มีการเคลื่อนไหว Stock จากใบขายนี้",
   },
@@ -366,16 +420,16 @@ const TH: SalesDict = {
   },
   preview: {
     title: "สรุปการคำนวณ",
-    grossWeight: "น้ำหนักจริง (ตัด Stock)",
-    drcWeight: "น้ำหนัก DRC (คิดเงิน)",
+    grossWeightTotal: "น้ำหนักจริงรวม (ตัด Stock)",
+    drcWeightTotal: "น้ำหนัก DRC รวม (คิดเงิน)",
     grossAmount: "ยอดขายรวม",
     withholdingTaxAmount: "หักภาษี",
     netReceivableAmount: "ยอดสุทธิรอรับ",
-    costPerKg: "ต้นทุน/กก.",
     costAmount: "ต้นทุนรวม",
     profitAmount: "กำไรประมาณการ",
     warningInsufficient:
-      "น้ำหนักที่ระบุเกินน้ำหนักคงเหลือใน Lot — กรุณาตรวจสอบ",
+      "มีบาง Lot ใส่น้ำหนักเกินคงเหลือ — กรุณาแก้ไขก่อนบันทึก",
+    linesCount: (n) => `${n} รายการ`,
   },
   misc: {
     paginationInfo: (from, to, total) =>
@@ -385,6 +439,9 @@ const TH: SalesDict = {
       "ข้อมูลใบนี้พร้อมพิมพ์ใบกำกับการขายในอนาคต (ระบบเอกสาร/PDF จะมาภายหลัง)",
     movementHistoryTitle: "การเคลื่อนไหว Stock จากใบขายนี้",
     salesSnapshotTitle: "สรุปยอดและต้นทุน",
+    linesSectionTitle: "รายการ Lot ที่ขาย",
+    lotsSummary: (firstLotNo, more) =>
+      more > 0 ? `${firstLotNo} + อีก ${more} รายการ` : firstLotNo,
   },
 };
 
@@ -396,28 +453,31 @@ const EN: SalesDict = {
       `Showing only sales in branches you can access (${count} branches)`,
     newTitle: "New sales order",
     newSubtitle:
-      "Pick a stock lot and fill the sale info. Sales number is auto-generated. Initial status: DRAFT.",
+      "Search stock lots, add them to the bill and tweak quantities. Initial status: DRAFT.",
     detailTitle: "Sales order details",
     editTitle: "Edit sales order",
     editSubtitle: (status) =>
       `Editing in "${status}" — editable fields depend on status`,
+    pickerTitle: "Pick stock lots",
+    pickerSubtitle:
+      "Search by lot # / ticket # / customer / rubber type — click \"Add to bill\".",
+    cartTitle: "Lots in this bill",
+    cartEmpty: "No lots in this bill yet — add from the picker on the left.",
   },
   fields: {
     salesNo: "Sale #",
     branch: "Branch",
-    sourceLot: "Source lot",
     rubberType: "Rubber type",
     buyerName: "Buyer / factory",
     saleType: "Sale type",
-    grossWeight: "Gross weight (wet)",
     drcPercent: "DRC (%)",
-    drcWeight: "DRC weight (dry)",
+    drcWeightTotal: "DRC weight (total)",
+    grossWeightTotal: "Gross weight total (wet)",
     pricePerKg: "Price / kg (DRC)",
     grossAmount: "Gross amount",
     withholdingTaxPercent: "Withholding tax (%)",
     withholdingTaxAmount: "Withholding tax",
     netReceivableAmount: "Net receivable",
-    costPerKg: "Cost / kg (wet)",
     costAmount: "Cost amount",
     profitAmount: "Estimated profit",
     status: "Status",
@@ -436,6 +496,14 @@ const EN: SalesDict = {
     movementQuantity: "Qty",
     movementBefore: "Before",
     movementAfter: "After",
+    lotNo: "Lot",
+    sourceTicket: "Source ticket",
+    customer: "Customer",
+    remainingWeight: "Remaining",
+    effectiveCostPerKg: "Cost / kg",
+    lineGrossWeight: "Line gross weight",
+    lineCostAmount: "Line cost",
+    lots: "Lots",
   },
   units: {
     kg: "kg",
@@ -445,26 +513,31 @@ const EN: SalesDict = {
   },
   hints: {
     autoSalesNo: "Sales number is auto-generated (e.g. SAL000001)",
-    serverComputedDrcWeight: "Computed: gross weight × DRC ÷ 100",
-    serverComputedGrossAmount: "Computed: DRC weight × price per kg",
+    serverComputedDrcWeight: "Computed: total gross × DRC ÷ 100",
+    serverComputedGrossAmount: "Computed: total DRC weight × price per kg",
     serverComputedTax: "Computed: gross amount × withholding ÷ 100",
     serverComputedNet: "Computed: gross amount − withholding tax",
-    serverComputedCost: "Computed: gross weight × lot cost per kg",
+    serverComputedCost: "Computed: Σ (line gross × line cost / kg)",
     serverComputedProfit: "Computed: gross amount − cost amount",
     weightDecimals: "Up to 2 decimal places",
-    priceDecimals: "Up to 4 decimal places",
+    priceDecimals: "Up to 2 decimal places",
     percentDecimals: "Up to 2 decimal places",
-    grossDrivesStock: "Gross weight (wet) is the only value that drives stock.",
+    grossDrivesStock:
+      "Each line's gross weight is the only value that drives stock.",
     drcDoesNotDriveStock:
-      "DRC weight (dry) is for revenue calculation only — never affects stock.",
+      "DRC% is for revenue calculation only — never affects stock.",
     confirmCutsStock:
-      "Confirming creates a SALES_OUT movement and decrements lot stock.",
+      "Confirming creates one SALES_OUT movement per lot and decrements stock.",
     cancelReversesStock:
-      "Cancelling a confirmed sale creates a CANCEL_REVERSE movement and restores stock.",
+      "Cancelling a confirmed sale creates one CANCEL_REVERSE per lot and restores stock.",
+    addLotDefaultsToRemaining:
+      "Adding a lot defaults the line quantity to that lot's remaining weight.",
+    canSellPartialLot:
+      "Partial sale supported — lower the quantity, the rest stays sellable.",
   },
   placeholders: {
     listSearch: "Search sales # / lot # / buyer name",
-    selectLot: "— Select stock lot —",
+    pickerSearch: "Search lot # / ticket # / customer / rubber type",
     selectBranch: "— Select branch —",
     selectSaleType: "— Select type —",
     selectStatus: "All statuses",
@@ -484,7 +557,7 @@ const EN: SalesDict = {
     confirmCancelPrompt: (salesNo) =>
       `Cancel sale ${salesNo}? Stock will be restored if it was confirmed.`,
     edit: "Edit",
-    back: "← Back to list",
+    back: "← Back",
     detail: "View",
     saving: "Saving...",
     showInactive: "Show inactive",
@@ -492,6 +565,12 @@ const EN: SalesDict = {
     clear: "Clear",
     prev: "← Prev",
     next: "Next →",
+    addToBill: "+ Add to bill",
+    alreadyAdded: "Already in bill",
+    useAllRemaining: "Use all",
+    removeLine: "Remove",
+    loadMore: "Load more",
+    saveLines: "Save lots",
   },
   errors: {
     invalidJson: "Invalid request body",
@@ -511,13 +590,14 @@ const EN: SalesDict = {
     buyerNameTooLong: "Buyer name exceeds 200 characters",
     saleTypeInvalid: "Invalid sale type",
     rubberTypeInvalid: "Invalid rubber type",
-    grossPositive: "Gross weight must be greater than 0",
     weightTooManyDecimals: "Weight has more than 2 decimal places",
     insufficientStock: "Quantity exceeds remaining weight on the lot",
+    insufficientStockOnLot: (lotNo) =>
+      `Lot ${lotNo} has insufficient remaining weight`,
     drcRange: "DRC must be between 0 and 100",
     drcTooManyDecimals: "DRC has more than 2 decimal places",
     pricePositive: "Price/kg must be greater than 0",
-    priceTooManyDecimals: "Price/kg has more than 4 decimal places",
+    priceTooManyDecimals: "Price/kg has more than 2 decimal places",
     percentRange: "Percent must be between 0 and 100",
     percentTooManyDecimals: "Percent has more than 2 decimal places",
     expectedDateInvalid: "Invalid expected receive date",
@@ -527,6 +607,8 @@ const EN: SalesDict = {
     statusTransitionForbidden: (from, to) =>
       `Cannot transition from "${from}" to "${to}"`,
     statusFieldsLocked: "This field is locked by the current status",
+    linesLocked:
+      "Lines cannot be edited after confirm/cancel. Open a new bill instead.",
     cancelReasonRequired:
       "A cancel reason is required when cancelling a CONFIRMED sale",
     cancelReasonTooLong: "Cancel reason exceeds 500 characters",
@@ -536,12 +618,16 @@ const EN: SalesDict = {
     autoGenFailed:
       "Failed to generate a unique sales number — please retry",
     salesNoConflict: "Sales number collision — please retry",
+    linesEmpty: "At least one lot is required",
+    duplicateLot: "This lot is already in the bill",
+    lineGrossPositive: "Line gross weight must be > 0",
   },
   empty: {
     list: "No sales orders yet",
     noResults: (q) => `No sales match "${q}"`,
     noEligibleLots:
       "No sellable stock lots (need ACTIVE and remaining weight > 0)",
+    noEligibleLotsForSearch: (q) => `No lots match "${q}"`,
     noBranches: "Your account has no branch assigned. Contact admin.",
     noMovements: "No stock movements from this sale yet",
   },
@@ -563,23 +649,27 @@ const EN: SalesDict = {
   },
   preview: {
     title: "Calculation preview",
-    grossWeight: "Gross weight (cuts stock)",
-    drcWeight: "DRC weight (revenue)",
+    grossWeightTotal: "Gross weight total (cuts stock)",
+    drcWeightTotal: "DRC weight total (revenue)",
     grossAmount: "Gross amount",
     withholdingTaxAmount: "Withholding tax",
     netReceivableAmount: "Net receivable",
-    costPerKg: "Cost / kg",
     costAmount: "Cost amount",
     profitAmount: "Estimated profit",
-    warningInsufficient: "Quantity exceeds remaining weight — please review",
+    warningInsufficient:
+      "Some lots have quantities exceeding remaining weight — fix before saving",
+    linesCount: (n) => `${n} lines`,
   },
   misc: {
     paginationInfo: (from, to, total) => `Showing ${from}–${to} of ${total}`,
     detailComputedHint: "Server-computed values — display only",
     documentReadyHint:
-      "This sale's data is ready for future invoice printing (PDF/document module ships later)",
+      "Ready for future invoice printing (PDF/document module ships later)",
     movementHistoryTitle: "Stock movements from this sale",
     salesSnapshotTitle: "Amount & cost snapshot",
+    linesSectionTitle: "Lots in this sale",
+    lotsSummary: (firstLotNo, more) =>
+      more > 0 ? `${firstLotNo} + ${more} more` : firstLotNo,
   },
 };
 

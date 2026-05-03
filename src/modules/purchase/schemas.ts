@@ -76,7 +76,7 @@ const tareField = numericInput
 
 const priceField = numericInput
   .refine((n) => n > 0, t.errors.pricePositive)
-  .refine(maxDecimals(4, t.errors.priceTooManyDecimals), {
+  .refine(maxDecimals(2, t.errors.priceTooManyDecimals), {
     message: t.errors.priceTooManyDecimals,
   });
 

@@ -3,6 +3,7 @@ import type {
   Branch,
   PurchaseTicket,
   SalesOrder,
+  SalesOrderLine,
   StockLot,
 } from "@prisma/client";
 
@@ -21,7 +22,7 @@ export type SalesUserDTO = {
   displayName: string;
 };
 
-export type SalesSourceLotDTO = {
+export type SalesLotSnapshotDTO = {
   id: string;
   lotNo: string;
   rubberType: string;
@@ -32,21 +33,88 @@ export type SalesSourceLotDTO = {
   sourceTicket?: { id: string; ticketNo: string } | null;
 };
 
+// ─── Line ───────────────────────────────────────────────────────────────────
+
+export type SalesOrderLineDTO = {
+  id: string;
+  salesOrderId: string;
+  stockLotId: string;
+  rubberType: string;
+  grossWeight: string;
+  costPerKgSnapshot: string;
+  costAmount: string;
+  movementId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  // Joined lot snapshot (for UI display — list/detail page).
+  lot: SalesLotSnapshotDTO | null;
+};
+
+type SalesOrderLineWithRelations = SalesOrderLine & {
+  stockLot?:
+    | (Pick<
+        StockLot,
+        | "id"
+        | "lotNo"
+        | "rubberType"
+        | "remainingWeight"
+        | "effectiveCostPerKg"
+        | "status"
+        | "isActive"
+      > & {
+        sourcePurchaseTicket?:
+          | Pick<PurchaseTicket, "id" | "ticketNo">
+          | null;
+      })
+    | null;
+};
+
+export function toSalesOrderLineDTO(
+  l: SalesOrderLineWithRelations,
+): SalesOrderLineDTO {
+  return {
+    id: l.id,
+    salesOrderId: l.salesOrderId,
+    stockLotId: l.stockLotId,
+    rubberType: l.rubberType,
+    grossWeight: l.grossWeight.toString(),
+    costPerKgSnapshot: l.costPerKgSnapshot.toString(),
+    costAmount: l.costAmount.toString(),
+    movementId: l.movementId,
+    createdAt: l.createdAt.toISOString(),
+    updatedAt: l.updatedAt.toISOString(),
+    lot: l.stockLot
+      ? {
+          id: l.stockLot.id,
+          lotNo: l.stockLot.lotNo,
+          rubberType: l.stockLot.rubberType,
+          remainingWeight: l.stockLot.remainingWeight.toString(),
+          effectiveCostPerKg: l.stockLot.effectiveCostPerKg.toString(),
+          status: l.stockLot.status,
+          isActive: l.stockLot.isActive,
+          sourceTicket: l.stockLot.sourcePurchaseTicket
+            ? {
+                id: l.stockLot.sourcePurchaseTicket.id,
+                ticketNo: l.stockLot.sourcePurchaseTicket.ticketNo,
+              }
+            : null,
+        }
+      : null,
+  };
+}
+
 // ─── SalesOrder ─────────────────────────────────────────────────────────────
 
 export type SalesOrderDTO = {
   id: string;
   branchId: string;
   branch: SalesBranchDTO | null;
-  stockLotId: string;
-  sourceLot: SalesSourceLotDTO | null;
   salesNo: string;
   buyerName: string;
   saleType: SaleType;
-  rubberType: string;
-  grossWeight: string;
+  grossWeightTotal: string;
   drcPercent: string;
-  drcWeight: string;
+  drcWeightTotal: string;
   pricePerKg: string;
   grossAmount: string;
   withholdingTaxPercent: string;
@@ -67,6 +135,7 @@ export type SalesOrderDTO = {
   cancelledAt: string | null;
   cancelledBy: SalesUserDTO | null;
   cancelReason: string | null;
+  lines: SalesOrderLineDTO[];
 };
 
 type SalesOrderWithRelations = SalesOrder & {
@@ -74,22 +143,7 @@ type SalesOrderWithRelations = SalesOrder & {
   createdBy?: Pick<AppUser, "id" | "displayName"> | null;
   confirmedBy?: Pick<AppUser, "id" | "displayName"> | null;
   cancelledBy?: Pick<AppUser, "id" | "displayName"> | null;
-  stockLot?:
-    | (Pick<
-        StockLot,
-        | "id"
-        | "lotNo"
-        | "rubberType"
-        | "remainingWeight"
-        | "effectiveCostPerKg"
-        | "status"
-        | "isActive"
-      > & {
-        sourcePurchaseTicket?:
-          | Pick<PurchaseTicket, "id" | "ticketNo">
-          | null;
-      })
-    | null;
+  lines?: SalesOrderLineWithRelations[] | null;
 };
 
 function userDto(
@@ -105,31 +159,12 @@ export function toSalesOrderDTO(s: SalesOrderWithRelations): SalesOrderDTO {
     branch: s.branch
       ? { id: s.branch.id, code: s.branch.code, name: s.branch.name }
       : null,
-    stockLotId: s.stockLotId,
-    sourceLot: s.stockLot
-      ? {
-          id: s.stockLot.id,
-          lotNo: s.stockLot.lotNo,
-          rubberType: s.stockLot.rubberType,
-          remainingWeight: s.stockLot.remainingWeight.toString(),
-          effectiveCostPerKg: s.stockLot.effectiveCostPerKg.toString(),
-          status: s.stockLot.status,
-          isActive: s.stockLot.isActive,
-          sourceTicket: s.stockLot.sourcePurchaseTicket
-            ? {
-                id: s.stockLot.sourcePurchaseTicket.id,
-                ticketNo: s.stockLot.sourcePurchaseTicket.ticketNo,
-              }
-            : null,
-        }
-      : null,
     salesNo: s.salesNo,
     buyerName: s.buyerName,
     saleType: s.saleType as SaleType,
-    rubberType: s.rubberType,
-    grossWeight: s.grossWeight.toString(),
+    grossWeightTotal: s.grossWeightTotal.toString(),
     drcPercent: s.drcPercent.toString(),
-    drcWeight: s.drcWeight.toString(),
+    drcWeightTotal: s.drcWeightTotal.toString(),
     pricePerKg: s.pricePerKg.toString(),
     grossAmount: s.grossAmount.toString(),
     withholdingTaxPercent: s.withholdingTaxPercent.toString(),
@@ -152,10 +187,14 @@ export function toSalesOrderDTO(s: SalesOrderWithRelations): SalesOrderDTO {
     cancelledAt: s.cancelledAt ? s.cancelledAt.toISOString() : null,
     cancelledBy: userDto(s.cancelledBy),
     cancelReason: s.cancelReason,
+    lines: (s.lines ?? []).map(toSalesOrderLineDTO),
   };
 }
 
 // ─── Eligible lot for /sales/new picker ──────────────────────────────────────
+//
+// Includes customer name (joined via PurchaseTicket → Customer) so the
+// picker can search/display the customer the lot originated from.
 
 export type EligibleLotForSaleDTO = {
   id: string;
@@ -166,6 +205,8 @@ export type EligibleLotForSaleDTO = {
   remainingWeight: string;
   effectiveCostPerKg: string;
   sourceTicket: { id: string; ticketNo: string } | null;
+  customer: { id: string; code: string; fullName: string } | null;
+  createdAt: string;
 };
 
 type EligibleLotSource = Pick<
@@ -176,9 +217,14 @@ type EligibleLotSource = Pick<
   | "rubberType"
   | "remainingWeight"
   | "effectiveCostPerKg"
+  | "createdAt"
 > & {
   branch?: Pick<Branch, "id" | "code" | "name"> | null;
-  sourcePurchaseTicket?: Pick<PurchaseTicket, "id" | "ticketNo"> | null;
+  sourcePurchaseTicket?:
+    | (Pick<PurchaseTicket, "id" | "ticketNo"> & {
+        customer?: { id: string; code: string; fullName: string } | null;
+      })
+    | null;
 };
 
 export function toEligibleLotForSaleDTO(
@@ -200,5 +246,13 @@ export function toEligibleLotForSaleDTO(
           ticketNo: l.sourcePurchaseTicket.ticketNo,
         }
       : null,
+    customer: l.sourcePurchaseTicket?.customer
+      ? {
+          id: l.sourcePurchaseTicket.customer.id,
+          code: l.sourcePurchaseTicket.customer.code,
+          fullName: l.sourcePurchaseTicket.customer.fullName,
+        }
+      : null,
+    createdAt: l.createdAt.toISOString(),
   };
 }

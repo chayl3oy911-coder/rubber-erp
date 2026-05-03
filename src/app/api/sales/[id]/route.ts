@@ -5,6 +5,7 @@ import { patchSalesSchema } from "@/modules/sales/schemas";
 import {
   SalesCancelReasonRequiredError,
   SalesInsufficientStockError,
+  SalesLinesEmptyError,
   SalesNotFoundError,
   SalesStatusFieldsLockedError,
   SalesStatusTransitionError,
@@ -136,7 +137,8 @@ export async function PATCH(
       error instanceof SalesCancelReasonRequiredError ||
       error instanceof SalesStockLotInactiveError ||
       error instanceof SalesStockLotNotActiveError ||
-      error instanceof SalesStockLotNotFoundError
+      error instanceof SalesStockLotNotFoundError ||
+      error instanceof SalesLinesEmptyError
     ) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

@@ -226,7 +226,7 @@ function CreateForm({
         id="pricePerKg"
         label={`${t.fields.pricePerKg} (${t.units.bahtPerKg})`}
         required
-        step={0.0001}
+        step={0.01}
         value={priceInput}
         onValueChange={setPriceInput}
         error={state.fieldErrors?.pricePerKg}
@@ -423,7 +423,7 @@ function EditForm({
       <NumericField
         id="pricePerKg"
         label={`${t.fields.pricePerKg} (${t.units.bahtPerKg})`}
-        step={0.0001}
+        step={0.01}
         value={priceInput}
         onValueChange={setPriceInput}
         error={state.fieldErrors?.pricePerKg}
@@ -629,6 +629,9 @@ function previewAmounts(
   const netPayable =
     Number.isFinite(total) && Number.isFinite(tax) ? total - tax : NaN;
 
+  // Consistent formatter: weights and money both render at 2 dp
+  // (`minimumFractionDigits: 2` pads "12" → "12.00"). Per-kg rates live in
+  // their own input fields and aren't part of this preview.
   const fmt2 = (n: number) =>
     n.toLocaleString("th-TH", {
       minimumFractionDigits: 2,
@@ -636,7 +639,7 @@ function previewAmounts(
     });
 
   return {
-    net: net.toLocaleString("th-TH", { maximumFractionDigits: 2 }),
+    net: fmt2(net),
     total: Number.isFinite(total) ? fmt2(total) : "—",
     tax: Number.isFinite(tax) ? fmt2(tax) : "—",
     netPayable: Number.isFinite(netPayable) ? fmt2(netPayable) : "—",

@@ -10,6 +10,7 @@ import { hasPermission, requirePermission } from "@/shared/auth/dal";
 import { Card, CardContent } from "@/shared/ui";
 
 import { SaleTypeBadge } from "../_components/sale-type-badge";
+import { SalesLineList } from "../_components/sales-line-list";
 import { SalesMovementList } from "../_components/sales-movement-list";
 import { SalesStatusBadge } from "../_components/sales-status-badge";
 import { StatusActions } from "../_components/status-actions";
@@ -125,42 +126,24 @@ export default async function SalesDetailPage({
       <StatusActions sale={sale} canConfirm={canConfirm} canCancel={canCancel} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        {/* Sale + lot info */}
+        {/* Sale info */}
         <Card className="lg:col-span-2">
           <CardContent className="flex flex-col gap-3">
             <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
               {t.page.detailTitle}
             </h2>
             <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-              <Field label={t.fields.sourceLot}>
-                {sale.sourceLot ? (
-                  <Link
-                    href={`/stock/${sale.sourceLot.id}`}
-                    className="font-mono text-emerald-700 hover:underline dark:text-emerald-400"
-                  >
-                    {sale.sourceLot.lotNo}
-                  </Link>
-                ) : (
-                  "—"
-                )}
-                {sale.sourceLot?.sourceTicket ? (
-                  <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">
-                    ← {sale.sourceLot.sourceTicket.ticketNo}
-                  </span>
-                ) : null}
-              </Field>
-              <Field label={t.fields.rubberType}>{sale.rubberType}</Field>
-              <Field label={t.fields.grossWeight}>
-                {formatNumber(sale.grossWeight, 2)} {t.units.kg}
+              <Field label={t.fields.grossWeightTotal}>
+                {formatNumber(sale.grossWeightTotal, 2)} {t.units.kg}
               </Field>
               <Field label={t.fields.drcPercent}>
                 {formatNumber(sale.drcPercent, 2)} {t.units.percent}
               </Field>
-              <Field label={t.fields.drcWeight}>
-                {formatNumber(sale.drcWeight, 2)} {t.units.kg}
+              <Field label={t.fields.drcWeightTotal}>
+                {formatNumber(sale.drcWeightTotal, 2)} {t.units.kg}
               </Field>
               <Field label={t.fields.pricePerKg}>
-                {formatNumber(sale.pricePerKg, 4)} {t.units.bahtPerKg}
+                {formatNumber(sale.pricePerKg, 2)} {t.units.bahtPerKg}
               </Field>
               <Field label={t.fields.expectedReceiveDate}>
                 {formatDateOnly(sale.expectedReceiveDate)}
@@ -215,6 +198,14 @@ export default async function SalesDetailPage({
           </CardContent>
         </Card>
       </div>
+
+      {/* Lines */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">
+          {t.misc.linesSectionTitle} ({t.preview.linesCount(sale.lines.length)})
+        </h2>
+        <SalesLineList lines={sale.lines} />
+      </section>
 
       {/* Audit summary */}
       <Card>

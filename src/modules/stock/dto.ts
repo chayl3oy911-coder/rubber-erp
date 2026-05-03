@@ -1,10 +1,11 @@
-import type {
-  AppUser,
-  Branch,
-  Customer,
-  PurchaseTicket,
-  StockLot,
-  StockMovement,
+import {
+  Prisma,
+  type AppUser,
+  type Branch,
+  type Customer,
+  type PurchaseTicket,
+  type StockLot,
+  type StockMovement,
 } from "@prisma/client";
 
 import type {
@@ -31,6 +32,8 @@ export type StockSourceTicketDTO = {
   ticketNo: string;
   netWeight: string;
   totalAmount: string;
+  /** Purchase price per kg AT RECEIVE TIME — historical, never changes. */
+  pricePerKg: string;
   status: string;
   isActive: boolean;
   customer: { id: string; code: string; fullName: string } | null;
@@ -48,6 +51,22 @@ export type StockLotDTO = {
   rubberType: string;
   initialWeight: string;
   remainingWeight: string;
+  /**
+   * Landed cost at receive time = PurchaseTicket.totalAmount.
+   * Historical — never mutates after lot creation. Mirrored here so UIs can
+   * render "ต้นทุนรับเข้ารวม" without re-joining to PurchaseTicket.
+   */
+  initialCostAmount: string;
+  /**
+   * Landed cost per kg at receive time = totalAmount / initialWeight
+   * rounded HALF_UP @ 2 dp. Same precision as `effectiveCostPerKg` so tables
+   * can put the two columns side by side without rounding differences.
+   * Equals `sourceTicket.pricePerKg` (stored as `Decimal(12, 2)`) when the
+   * source ticket is reachable — the division is only a fallback.
+   */
+  initialCostPerKg: string;
+  /** Remaining landed cost — decreases on SALES_OUT, increases on
+   * CANCEL_REVERSE (Sales), constant on ADJUST_* / WATER_LOSS. */
   costAmount: string;
   effectiveCostPerKg: string;
   status: StockLotStatus;
@@ -63,7 +82,13 @@ type StockLotWithRelations = StockLot & {
   sourcePurchaseTicket?:
     | (Pick<
         PurchaseTicket,
-        "id" | "ticketNo" | "netWeight" | "totalAmount" | "status" | "isActive"
+        | "id"
+        | "ticketNo"
+        | "netWeight"
+        | "totalAmount"
+        | "pricePerKg"
+        | "status"
+        | "isActive"
       > & {
         customer?: Pick<Customer, "id" | "code" | "fullName"> | null;
       })
@@ -77,6 +102,22 @@ function userDto(
 }
 
 export function toStockLotDTO(l: StockLotWithRelations): StockLotDTO {
+  const initialWeight = new Prisma.Decimal(l.initialWeight);
+  // Compute the inbound landed rate server-side so UI labels stay simple.
+  // We prefer the ticket's `pricePerKg` when available (it's stored at 4 dp
+  // and is the "official" receive price). Falls back to totalAmount /
+  // initialWeight if, for any reason, the ticket is unreachable.
+  const ticket = l.sourcePurchaseTicket;
+  const initialCostAmount = ticket
+    ? new Prisma.Decimal(ticket.totalAmount)
+    : new Prisma.Decimal(l.costAmount);
+  const initialCostPerKg = ticket
+    ? new Prisma.Decimal(ticket.pricePerKg)
+    : initialWeight.gt(0)
+      ? initialCostAmount
+          .div(initialWeight)
+          .toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP)
+      : new Prisma.Decimal(0);
   return {
     id: l.id,
     branchId: l.branchId,
@@ -84,19 +125,20 @@ export function toStockLotDTO(l: StockLotWithRelations): StockLotDTO {
       ? { id: l.branch.id, code: l.branch.code, name: l.branch.name }
       : null,
     sourcePurchaseTicketId: l.sourcePurchaseTicketId,
-    sourceTicket: l.sourcePurchaseTicket
+    sourceTicket: ticket
       ? {
-          id: l.sourcePurchaseTicket.id,
-          ticketNo: l.sourcePurchaseTicket.ticketNo,
-          netWeight: l.sourcePurchaseTicket.netWeight.toString(),
-          totalAmount: l.sourcePurchaseTicket.totalAmount.toString(),
-          status: l.sourcePurchaseTicket.status,
-          isActive: l.sourcePurchaseTicket.isActive,
-          customer: l.sourcePurchaseTicket.customer
+          id: ticket.id,
+          ticketNo: ticket.ticketNo,
+          netWeight: ticket.netWeight.toString(),
+          totalAmount: ticket.totalAmount.toString(),
+          pricePerKg: ticket.pricePerKg.toString(),
+          status: ticket.status,
+          isActive: ticket.isActive,
+          customer: ticket.customer
             ? {
-                id: l.sourcePurchaseTicket.customer.id,
-                code: l.sourcePurchaseTicket.customer.code,
-                fullName: l.sourcePurchaseTicket.customer.fullName,
+                id: ticket.customer.id,
+                code: ticket.customer.code,
+                fullName: ticket.customer.fullName,
               }
             : null,
         }
@@ -105,6 +147,8 @@ export function toStockLotDTO(l: StockLotWithRelations): StockLotDTO {
     rubberType: l.rubberType,
     initialWeight: l.initialWeight.toString(),
     remainingWeight: l.remainingWeight.toString(),
+    initialCostAmount: initialCostAmount.toString(),
+    initialCostPerKg: initialCostPerKg.toString(),
     costAmount: l.costAmount.toString(),
     effectiveCostPerKg: l.effectiveCostPerKg.toString(),
     status: l.status as StockLotStatus,

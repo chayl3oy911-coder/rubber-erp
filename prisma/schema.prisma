@@ -232,12 +232,12 @@ model PurchaseTicket {
   grossWeight Decimal @db.Decimal(12, 2)
   tareWeight  Decimal @default(0) @db.Decimal(12, 2)
   netWeight   Decimal @db.Decimal(12, 2)
-  pricePerKg  Decimal @db.Decimal(12, 4)
+  pricePerKg  Decimal @db.Decimal(12, 2)
   totalAmount Decimal @db.Decimal(14, 2)
 
   // ─── Withholding tax (เก็บลง DB ทุกใบเพื่อ trace ภาษีย้อนหลังได้) ──────────
-  // pricePerKg ยังคง 4 ตำแหน่งเพราะตลาดยางจริงใช้ทศนิยม 4 ตำแหน่ง.
-  // weight/total/tax/netPayable ใช้ 2 ตำแหน่งทั้งหมด.
+  // ระบบนี้กำหนดราคา/กก. และต้นทุน/กก. เป็น 2 ตำแหน่งทั้งระบบ เพื่อให้ตรงกับ
+  // การทำงานจริงและการแสดงผล (money/weight/percent ทั้งหมดใช้ 2 dp HALF_UP).
   // service จะ recompute และเขียนทับเสมอ — `@default(0)` มีไว้กัน migration
   // แตกถ้ามี row เก่าโผล่มา (ไม่ควรเกิดในรอบนี้เพราะตารางว่าง).
   withholdingTaxPercent Decimal @default(0) @db.Decimal(5, 2)
@@ -318,7 +318,8 @@ model StockLot {
   // Cost — 2 dp on totals (Thai retail/tax norm); 4 dp on rate to absorb
   // recompute drift from adjustments without losing precision.
   costAmount         Decimal @db.Decimal(14, 2)
-  effectiveCostPerKg Decimal @db.Decimal(14, 4)
+  // ต้นทุน/กก. ใช้ 2 ตำแหน่งทั้งระบบ (รอบ HALF_UP ใน service).
+  effectiveCostPerKg Decimal @db.Decimal(14, 2)
 
   status      String // ACTIVE | DEPLETED | CANCELLED
   isActive    Boolean  @default(true)
@@ -330,8 +331,8 @@ model StockLot {
   sourcePurchaseTicket PurchaseTicket @relation(fields: [sourcePurchaseTicketId], references: [id])
   createdBy            AppUser        @relation("StockLotCreator", fields: [createdById], references: [id])
 
-  movements   StockMovement[]
-  salesOrders SalesOrder[]
+  movements       StockMovement[]
+  salesOrderLines SalesOrderLine[]
 
   @@unique([branchId, lotNo])
   // Hard guarantee that one PurchaseTicket cannot produce two lots, even on
@@ -373,62 +374,66 @@ model StockMovement {
   stockLot  StockLot @relation(fields: [stockLotId], references: [id])
   createdBy AppUser  @relation("StockMovementCreator", fields: [createdById], references: [id])
 
+  // 1:1 inverse — a SALES_OUT movement is referenced by exactly one
+  // SalesOrderLine (CANCEL_REVERSE movements are NOT linked back via
+  // SalesOrderLine.movementId, so they leave this null).
+  salesOrderLine SalesOrderLine? @relation("SalesOrderLineMovement")
+
   @@index([stockLotId, createdAt])
   @@index([branchId, movementType])
   @@index([referenceType, referenceId])
 }
 
-// ─── Sales (Factory sales + DRC) ─────────────────────────────────────────────
+// ─── Sales (Factory sales + DRC, multi-lot) ─────────────────────────────────
 //
-// One SalesOrder targets exactly one StockLot. Multiple sales can be created
-// from the same lot until its `remainingWeight` runs out. The wet weight
-// (`grossWeight`) is what actually leaves the lot via a SALES_OUT movement;
-// the dry weight (`drcWeight = grossWeight × drcPercent / 100`) is purely
-// a sale/revenue concept and NEVER touches stock.
+// 1 SalesOrder = หัวบิลขาย, 1..N SalesOrderLine = รายการ lot ที่ขาย.
+// แต่ละ line ผูกกับ 1 StockLot และมี grossWeight ของตัวเอง — line คือ
+// หน่วยที่ใช้ตัด stock จริง. Header (SalesOrder) ทำหน้าที่เก็บ DRC%, ราคา/กก.,
+// ภาษี, และผลรวม (grossWeightTotal, drcWeightTotal, costAmount, profit).
 //
-// Cost / profit are snapshotted on this row at create-time (preview) AND
-// re-snapshotted at confirm (lot cost may have shifted via adjustments
-// between draft & confirm). Once CONFIRMED these are immutable historical
-// records — adjustments to the lot AFTER confirm do not retro-modify sales.
+// กฎสำคัญ:
+//  - DRAFT: ยังไม่ตัด stock (สร้าง / แก้ / ลบ line ได้)
+//  - CONFIRMED: lock lines (ห้ามแก้). Confirm จะ:
+//      • SELECT FOR UPDATE ทุก StockLot ของแต่ละ line (เรียงตาม id ป้องกัน deadlock)
+//      • re-validate grossWeight ≤ remainingWeight
+//      • re-snapshot costPerKgSnapshot จาก lot.effectiveCostPerKg ปัจจุบัน
+//      • สร้าง SALES_OUT movement 1 ตัวต่อ 1 line, ลด lot.remainingWeight
+//      • ตั้ง lot.status = DEPLETED ถ้า remaining ถึง 0
+//  - CANCELLED:
+//      • from DRAFT → ไม่กระทบ stock
+//      • from CONFIRMED → สร้าง CANCEL_REVERSE 1 ตัวต่อ 1 line คืน weight กลับ
 //
-// Withholding tax / netReceivable / receivedAt / expectedReceiveDate are
-// reserved for the future Payment + Reconciliation module. Step 9 only
-// computes & stores them; no Payment row is created.
-//
-// Status string-coded ("DRAFT" | "CONFIRMED" | "CANCELLED") matching the
-// PurchaseTicket / StockLot convention. RECEIVED is reserved for the
-// future payment step.
+// DRC% ใช้คิด revenue เท่านั้น — ไม่กระทบ stock. Stock ตัดด้วย line.grossWeight.
 
 model SalesOrder {
-  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  branchId   String @db.Uuid
-  stockLotId String @db.Uuid
-  salesNo    String
+  id       String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId String @db.Uuid
+  salesNo  String
 
   // Buyer (factory). Snapshot at sale time even after a future
   // BuyerFactory master is introduced, so historical rows survive renames.
-  buyerName  String
-  saleType   String // SALE | CONSIGNMENT
-  rubberType String // snapshot from StockLot at create-time
+  buyerName String
+  saleType  String // SALE | CONSIGNMENT
 
-  // ── Weights ──
-  // grossWeight = wet weight that actually leaves the lot (drives stock).
-  // drcWeight   = dry rubber content used for pricing (NEVER drives stock).
-  grossWeight Decimal @db.Decimal(12, 2)
-  drcPercent  Decimal @db.Decimal(5, 2)
-  drcWeight   Decimal @db.Decimal(12, 2)
+  // ── Aggregates (recomputed every create / line-replace / confirm) ──
+  // grossWeightTotal = Σ line.grossWeight  → drives stock cuts at confirm.
+  // drcWeightTotal   = grossWeightTotal × drcPercent / 100  → revenue only.
+  grossWeightTotal Decimal @db.Decimal(12, 2)
+  drcPercent       Decimal @db.Decimal(5, 2)
+  drcWeightTotal   Decimal @db.Decimal(12, 2)
 
-  // ── Sale price ──
-  pricePerKg  Decimal @db.Decimal(14, 4)
-  grossAmount Decimal @db.Decimal(14, 2) // = drcWeight × pricePerKg
+  // ── Sale price (header-level) ──
+  // ราคา/กก. ใช้ 2 ตำแหน่งทั้งระบบ (รอบ HALF_UP ใน service).
+  pricePerKg  Decimal @db.Decimal(14, 2)
+  grossAmount Decimal @db.Decimal(14, 2) // = drcWeightTotal × pricePerKg
 
   // ── Withholding tax ──
   withholdingTaxPercent Decimal @default(0) @db.Decimal(5, 2)
   withholdingTaxAmount  Decimal @default(0) @db.Decimal(14, 2)
   netReceivableAmount   Decimal @db.Decimal(14, 2) // = grossAmount − withholdingTaxAmount
 
-  // ── Cost / profit snapshot ──
-  // costAmount  = grossWeight × StockLot.effectiveCostPerKg (at confirm time)
+  // ── Cost / profit snapshot (Σ ของ line.costAmount) ──
+  // costAmount   = Σ line.costAmount     (snapshot ใหม่ทุกครั้งที่ confirm)
   // profitAmount = grossAmount − costAmount
   costAmount   Decimal @default(0) @db.Decimal(14, 2)
   profitAmount Decimal @default(0) @db.Decimal(14, 2)
@@ -451,16 +456,50 @@ model SalesOrder {
   cancelReason  String?
 
   branch      Branch   @relation(fields: [branchId], references: [id])
-  stockLot    StockLot @relation(fields: [stockLotId], references: [id])
   createdBy   AppUser  @relation("SalesCreator", fields: [createdById], references: [id])
   confirmedBy AppUser? @relation("SalesConfirmer", fields: [confirmedById], references: [id])
   cancelledBy AppUser? @relation("SalesCanceller", fields: [cancelledById], references: [id])
+
+  lines SalesOrderLine[]
 
   @@unique([branchId, salesNo])
   @@index([branchId])
   @@index([branchId, status])
   @@index([branchId, saleType])
   @@index([branchId, createdAt])
+}
+
+// One row per StockLot referenced by a SalesOrder. Snapshots `rubberType`
+// + `costPerKgSnapshot` so historical rows survive lot-level changes
+// (rename, adjust). `costAmount` here is the line's contribution to the
+// header total. `movementId` links 1:1 to the SALES_OUT movement created
+// at confirm-time (null while DRAFT). CANCEL_REVERSE movements are NOT
+// linked back here — they're discoverable via referenceType/referenceId.
+model SalesOrderLine {
+  id           String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  salesOrderId String @db.Uuid
+  stockLotId   String @db.Uuid
+
+  rubberType String // snapshot from StockLot at create-time
+
+  grossWeight       Decimal @db.Decimal(12, 2)
+  // ต้นทุน/กก. snapshot: 2 ตำแหน่งสอดคล้องกับ StockLot.effectiveCostPerKg.
+  costPerKgSnapshot Decimal @db.Decimal(14, 2) // = lot.effectiveCostPerKg at create / confirm
+  costAmount        Decimal @db.Decimal(14, 2) // = grossWeight × costPerKgSnapshot
+
+  movementId String? @unique @db.Uuid // SALES_OUT movement created at confirm
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  salesOrder    SalesOrder     @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  stockLot      StockLot       @relation(fields: [stockLotId], references: [id])
+  salesMovement StockMovement? @relation("SalesOrderLineMovement", fields: [movementId], references: [id])
+
+  // 1 lot ปรากฏใน 1 บิลขายได้แค่ 1 ครั้ง — ห้าม duplicate. ถ้าจะขาย lot
+  // เดิมรอบสอง ต้องเป็นบิลใหม่.
+  @@unique([salesOrderId, stockLotId])
+  @@index([salesOrderId])
   @@index([stockLotId])
 }
 

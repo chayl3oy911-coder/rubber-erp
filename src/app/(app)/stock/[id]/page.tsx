@@ -170,11 +170,21 @@ export default async function StockDetailPage({ params, searchParams }: Props) {
                 {formatNumber(lot.remainingWeight, 2)} {t.units.kg}
               </span>
             </DetailRow>
+            <DetailRow label={t.fields.initialCostPerKg} numeric>
+              {formatNumber(lot.initialCostPerKg, 2)} {t.units.bahtPerKg}
+            </DetailRow>
+            <DetailRow label={t.fields.initialCostAmount} numeric>
+              {formatNumber(lot.initialCostAmount, 2)} {t.units.baht}
+            </DetailRow>
             <DetailRow label={t.fields.costAmount} numeric>
-              {formatNumber(lot.costAmount, 2)} {t.units.baht}
+              <span className="text-base font-semibold">
+                {formatNumber(lot.costAmount, 2)} {t.units.baht}
+              </span>
             </DetailRow>
             <DetailRow label={t.fields.effectiveCostPerKg} numeric>
-              {formatNumber(lot.effectiveCostPerKg, 4)} {t.units.bahtPerKg}
+              <span className="text-base font-semibold">
+                {formatNumber(lot.effectiveCostPerKg, 2)} {t.units.bahtPerKg}
+              </span>
             </DetailRow>
             <DetailRow label={t.fields.createdAt}>
               {formatDateTime(lot.createdAt)}

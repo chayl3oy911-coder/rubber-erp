@@ -85,7 +85,7 @@ export function EligiblePurchasesList({
                   <div className="flex justify-between gap-3">
                     <dt className="min-w-0">{t.fields.pricePerKg}</dt>
                     <dd className="whitespace-nowrap text-right tabular-nums">
-                      {formatNumber(tk.pricePerKg, 4)} {t.units.bahtPerKg}
+                      {formatNumber(tk.pricePerKg, 2)} {t.units.bahtPerKg}
                     </dd>
                   </div>
                   <div className="flex justify-between gap-3 font-semibold text-zinc-900 dark:text-zinc-50">
@@ -173,7 +173,7 @@ export function EligiblePurchasesList({
                     {formatNumber(tk.netWeight, 2)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums text-zinc-700 dark:text-zinc-300">
-                    {formatNumber(tk.pricePerKg, 4)}
+                    {formatNumber(tk.pricePerKg, 2)}
                   </td>
                   <td className="whitespace-nowrap px-4 py-3 text-right tabular-nums font-semibold text-zinc-900 dark:text-zinc-50">
                     {formatNumber(tk.totalAmount, 2)}

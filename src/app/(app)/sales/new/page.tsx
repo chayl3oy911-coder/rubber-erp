@@ -2,7 +2,6 @@ import Link from "next/link";
 
 import { listBranches } from "@/modules/branch/service";
 import { salesT } from "@/modules/sales/i18n";
-import { listEligibleLotsForSale } from "@/modules/sales/service";
 import { requirePermission } from "@/shared/auth/dal";
 
 import { SalesForm } from "../_components/sales-form";
@@ -15,11 +14,7 @@ const ghostLinkClass =
 export default async function NewSalesPage() {
   const me = await requirePermission("sales.create");
 
-  const [branches, lots] = await Promise.all([
-    listBranches(me),
-    // Capped at 100 — simple <select>, future debounced picker if needed.
-    listEligibleLotsForSale(me, { limit: 100 }),
-  ]);
+  const branches = await listBranches(me);
 
   if (branches.length === 0) {
     return (
@@ -66,7 +61,6 @@ export default async function NewSalesPage() {
         }))}
         defaultBranchId={defaultBranchId}
         showBranchSelect={showBranchSelect}
-        lots={lots}
       />
     </div>
   );

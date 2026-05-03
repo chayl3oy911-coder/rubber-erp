@@ -117,8 +117,8 @@ export function AdjustmentForm({
   const remainingDisplay = formatNumber(remainingWeight, 2);
   const afterDisplay = preview ? formatNumber(String(preview.after), 2) : "—";
   const newRateDisplay = preview
-    ? formatNumber(String(preview.newRate), 4)
-    : formatNumber(effectiveCostPerKg, 4);
+    ? formatNumber(String(preview.newRate), 2)
+    : formatNumber(effectiveCostPerKg, 2);
 
   return (
     <Card>
