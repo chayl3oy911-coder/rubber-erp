@@ -96,6 +96,11 @@ type PurchaseDict = {
     approve: string;
     cancel: string;
     cancelConfirm: string;
+    cancelAfterSkip: string;
+    cancelAfterSkipConfirm: string;
+    cancelAfterSkipHint: string;
+    createReturn: string;
+    viewReturns: string;
     edit: string;
     back: string;
     detail: string;
@@ -135,6 +140,7 @@ type PurchaseDict = {
     statusFieldsLocked: string;
     cancelReasonRequired: string;
     cancelBlockedByStockLot: string;
+    notSkippedForCancel: string;
     notFound: string;
     ticketNoConflict: string;
     autoGenFailed: string;
@@ -248,6 +254,12 @@ const TH: PurchaseDict = {
     approve: "อนุมัติ",
     cancel: "ยกเลิกใบ",
     cancelConfirm: "ยืนยันการยกเลิก",
+    cancelAfterSkip: "ยกเลิกใบรับซื้อ",
+    cancelAfterSkipConfirm: "ยืนยันการยกเลิก",
+    cancelAfterSkipHint:
+      "ใบนี้ถูกข้ามการรับเข้า Stock แล้ว — กรอกเหตุผลเพื่อยืนยันการยกเลิก",
+    createReturn: "ทำรายการคืนสินค้า / Reverse Stock",
+    viewReturns: "ดูประวัติการคืนสินค้า",
     edit: "แก้ไข",
     back: "← กลับไปยังรายการ",
     detail: "ดูรายละเอียด",
@@ -289,6 +301,8 @@ const TH: PurchaseDict = {
     cancelReasonRequired: "ต้องระบุเหตุผลเมื่อยกเลิกใบที่อนุมัติแล้ว",
     cancelBlockedByStockLot:
       "ใบนี้ถูกรับเข้า Stock แล้ว ห้ามยกเลิก กรุณาติดต่อผู้ดูแล Stock เพื่อทำรายการย้อนกลับ",
+    notSkippedForCancel:
+      "ใบรับซื้อนี้ยังไม่ถูกข้ามการรับเข้า Stock — กรุณาข้ามก่อน จึงจะยกเลิกได้",
     notFound: "ไม่พบใบรับซื้อที่ระบุ",
     ticketNoConflict: "เลขที่ใบรับซื้อชนกัน กรุณาลองอีกครั้ง",
     autoGenFailed: "ระบบสร้างเลขที่ใบรับซื้อไม่สำเร็จ กรุณาลองอีกครั้ง",
@@ -411,6 +425,12 @@ const EN: PurchaseDict = {
     approve: "Approve",
     cancel: "Cancel ticket",
     cancelConfirm: "Confirm cancel",
+    cancelAfterSkip: "Cancel ticket",
+    cancelAfterSkipConfirm: "Confirm cancellation",
+    cancelAfterSkipHint:
+      "Stock intake was skipped — provide a reason to cancel this ticket.",
+    createReturn: "Create return / reverse stock",
+    viewReturns: "View return history",
     edit: "Edit",
     back: "← Back to list",
     detail: "View",
@@ -453,6 +473,8 @@ const EN: PurchaseDict = {
       "A cancel reason is required when cancelling an APPROVED ticket",
     cancelBlockedByStockLot:
       "Cannot cancel: this ticket has already been received into stock. Ask a stock administrator to perform a reverse adjustment.",
+    notSkippedForCancel:
+      "This ticket has not been marked as skipped — skip it first before cancelling.",
     notFound: "Ticket not found",
     ticketNoConflict: "Ticket number collision — please retry",
     autoGenFailed: "Failed to generate a unique ticket number — please retry",

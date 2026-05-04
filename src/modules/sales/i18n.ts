@@ -161,6 +161,7 @@ type SalesDict = {
     rubberTypeInvalid: string;
     weightTooManyDecimals: string;
     insufficientStock: string;
+    insufficientStockShort: string;
     insufficientStockOnLot: (lotNo: string) => string;
     drcRange: string;
     drcTooManyDecimals: string;
@@ -231,6 +232,19 @@ type SalesDict = {
     receivingSectionTitle: string;
     receivingPreviewLine: (entityName: string, bankLabel: string) => string;
     receivingMissingCta: string;
+    remainingShortFormat: (after: string, before: string, unit: string) => string;
+    costShortFormat: (cost: string) => string;
+    soldShortFormat: (sold: string, unit: string) => string;
+    remainingFromTotalFormat: (after: string, before: string, unit: string) => string;
+    pickerWeightLabel: string;
+    pickerRemainingAfterShort: (after: string, unit: string) => string;
+    pickerOriginalRemaining: (val: string, unit: string) => string;
+    pickerUsedInBill: (val: string, unit: string) => string;
+    pickerRemainingAfterFromTotal: (
+      after: string,
+      before: string,
+      unit: string,
+    ) => string;
   };
 };
 
@@ -387,6 +401,7 @@ const TH: SalesDict = {
     weightTooManyDecimals: "น้ำหนักมีทศนิยมเกิน 2 ตำแหน่ง",
     insufficientStock:
       "น้ำหนักที่ระบุเกินน้ำหนักคงเหลือใน Lot — ไม่สามารถดำเนินการ",
+    insufficientStockShort: "น้ำหนักเกินจำนวนคงเหลือ",
     insufficientStockOnLot: (lotNo) =>
       `Lot ${lotNo} มีน้ำหนักไม่พอตามที่ระบุ — กรุณาแก้ไขจำนวน`,
     drcRange: "DRC ต้องอยู่ระหว่าง 0–100",
@@ -477,6 +492,18 @@ const TH: SalesDict = {
     receivingPreviewLine: (entityName, bank) => `${entityName} · ${bank}`,
     receivingMissingCta:
       "ยังไม่มีบัญชีรับเงินที่ใช้ได้ — ไปที่ตั้งค่าเพื่อเพิ่มก่อน",
+    remainingShortFormat: (after, before, unit) =>
+      `เหลือ: ${after} จาก ${before} ${unit}`,
+    costShortFormat: (cost) => `ต้นทุน: ${cost}`,
+    soldShortFormat: (sold, unit) => `ขาย ${sold} ${unit}`,
+    remainingFromTotalFormat: (after, before, unit) =>
+      `เหลือ ${after} จาก ${before} ${unit}`,
+    pickerWeightLabel: "น้ำหนักที่จะขาย",
+    pickerRemainingAfterShort: (after, unit) => `เหลือหลังขาย: ${after} ${unit}`,
+    pickerOriginalRemaining: (val, unit) => `คงเหลือเดิม ${val} ${unit}`,
+    pickerUsedInBill: (val, unit) => `ใช้ในบิลนี้ ${val} ${unit}`,
+    pickerRemainingAfterFromTotal: (after, before, unit) =>
+      `เหลือหลังขาย ${after} จาก ${before} ${unit}`,
   },
 };
 
@@ -633,6 +660,7 @@ const EN: SalesDict = {
     rubberTypeInvalid: "Invalid rubber type",
     weightTooManyDecimals: "Weight has more than 2 decimal places",
     insufficientStock: "Quantity exceeds remaining weight on the lot",
+    insufficientStockShort: "Exceeds remaining weight",
     insufficientStockOnLot: (lotNo) =>
       `Lot ${lotNo} has insufficient remaining weight`,
     drcRange: "DRC must be between 0 and 100",
@@ -724,6 +752,18 @@ const EN: SalesDict = {
     receivingPreviewLine: (entityName, bank) => `${entityName} · ${bank}`,
     receivingMissingCta:
       "No usable receiving accounts yet — add one in /settings first",
+    remainingShortFormat: (after, before, unit) =>
+      `Remaining: ${after} of ${before} ${unit}`,
+    costShortFormat: (cost) => `Cost: ${cost}`,
+    soldShortFormat: (sold, unit) => `Sell ${sold} ${unit}`,
+    remainingFromTotalFormat: (after, before, unit) =>
+      `Remaining ${after} of ${before} ${unit}`,
+    pickerWeightLabel: "Sell weight",
+    pickerRemainingAfterShort: (after, unit) => `Remaining after sale: ${after} ${unit}`,
+    pickerOriginalRemaining: (val, unit) => `Original remaining ${val} ${unit}`,
+    pickerUsedInBill: (val, unit) => `Used in this bill ${val} ${unit}`,
+    pickerRemainingAfterFromTotal: (after, before, unit) =>
+      `Remaining after sale ${after} of ${before} ${unit}`,
   },
 };
 

@@ -46,6 +46,14 @@ export type PurchaseTicketDTO = {
   withholdingTaxAmount: string;
   netPayableAmount: string;
   status: PurchaseStatus;
+  // Stock intake axis (Step 11). Independent of `status`; stays "PENDING"
+  // until either the lot is created (`RECEIVED`) or the operator skips
+  // intake explicitly (`SKIPPED`).
+  stockIntakeStatus: string;
+  stockIntakeReceivedAt: string | null;
+  stockIntakeSkippedAt: string | null;
+  stockIntakeSkipReason: string | null;
+  paymentStatus: string;
   note: string | null;
   approvedAt: string | null;
   approvedBy: PurchaseUserDTO | null;
@@ -99,6 +107,15 @@ export function toPurchaseTicketDTO(p: PurchaseWithRelations): PurchaseTicketDTO
     withholdingTaxAmount: p.withholdingTaxAmount.toString(),
     netPayableAmount: p.netPayableAmount.toString(),
     status: p.status as PurchaseStatus,
+    stockIntakeStatus: p.stockIntakeStatus,
+    stockIntakeReceivedAt: p.stockIntakeReceivedAt
+      ? p.stockIntakeReceivedAt.toISOString()
+      : null,
+    stockIntakeSkippedAt: p.stockIntakeSkippedAt
+      ? p.stockIntakeSkippedAt.toISOString()
+      : null,
+    stockIntakeSkipReason: p.stockIntakeSkipReason,
+    paymentStatus: p.paymentStatus,
     note: p.note,
     approvedAt: p.approvedAt ? p.approvedAt.toISOString() : null,
     approvedBy: userDto(p.approvedBy),

@@ -45,6 +45,9 @@ export const STOCK_MOVEMENT_TYPES = [
   "PRODUCTION_OUT",
   "PRODUCTION_IN",
   "CANCEL_REVERSE",
+  // Step 12 — issued by purchase-return service. Cost semantics mirror
+  // SALES_OUT (proportional cost shrink), NOT ADJUST_OUT (cost preserved).
+  "PURCHASE_RETURN_OUT",
 ] as const;
 export type StockMovementType = (typeof STOCK_MOVEMENT_TYPES)[number];
 
@@ -83,6 +86,7 @@ export function movementDirection(type: StockMovementType): "in" | "out" {
     case "ADJUST_OUT":
     case "SALES_OUT":
     case "PRODUCTION_OUT":
+    case "PURCHASE_RETURN_OUT":
       return "out";
   }
 }
@@ -129,3 +133,53 @@ export function isStockAdjustmentDirection(
 ): value is StockAdjustmentDirection {
   return value === "ADJUST_IN" || value === "ADJUST_OUT";
 }
+
+// ─── Stock intake (Step 11) ─────────────────────────────────────────────────
+//
+// `stockIntakeStatus` lives on `PurchaseTicket` and is intentionally an axis
+// independent of `PurchaseTicket.status`. APPROVED tickets enter the intake
+// flow as PENDING; from there they either become RECEIVED (a StockLot was
+// created) or SKIPPED (the operator chose not to take them into stock,
+// usually for QC/clerical reasons). SKIPPED can be undone back to PENDING.
+
+export const STOCK_INTAKE_STATUSES = ["PENDING", "RECEIVED", "SKIPPED"] as const;
+export type StockIntakeStatus = (typeof STOCK_INTAKE_STATUSES)[number];
+
+const STOCK_INTAKE_STATUS_SET: ReadonlySet<string> = new Set(
+  STOCK_INTAKE_STATUSES,
+);
+
+export function isStockIntakeStatus(value: string): value is StockIntakeStatus {
+  return STOCK_INTAKE_STATUS_SET.has(value);
+}
+
+/** Views supported by the /stock/from-purchase page. */
+export const STOCK_INTAKE_VIEWS = ["pending", "skipped"] as const;
+export type StockIntakeView = (typeof STOCK_INTAKE_VIEWS)[number];
+
+export function isStockIntakeView(value: string): value is StockIntakeView {
+  return value === "pending" || value === "skipped";
+}
+
+// ─── Payment status (Step 11 — column-only, no logic yet) ───────────────────
+//
+// We model this here so service callers can return a typed value and so the
+// future Payment feature has a stable type to import on day one.
+
+export const PAYMENT_STATUSES = ["UNPAID", "PARTIAL", "PAID"] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+const PAYMENT_STATUS_SET: ReadonlySet<string> = new Set(PAYMENT_STATUSES);
+
+export function isPaymentStatus(value: string): value is PaymentStatus {
+  return PAYMENT_STATUS_SET.has(value);
+}
+
+/** Hard ceiling on a single bulk-intake request to bound DB load. */
+export const STOCK_INTAKE_BULK_MAX = 50;
+
+/** Server-side minimum for the SKIPPED reason text (after `.trim()`). */
+export const STOCK_INTAKE_SKIP_REASON_MIN = 5;
+
+/** Server-side ceiling for the SKIPPED reason text. */
+export const STOCK_INTAKE_SKIP_REASON_MAX = 500;

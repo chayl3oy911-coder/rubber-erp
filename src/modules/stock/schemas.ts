@@ -6,9 +6,14 @@ import { stockT } from "./i18n";
 import {
   STOCK_ADJUSTMENT_DIRECTIONS,
   STOCK_ADJUSTMENT_REASONS,
+  STOCK_INTAKE_BULK_MAX,
+  STOCK_INTAKE_SKIP_REASON_MAX,
+  STOCK_INTAKE_SKIP_REASON_MIN,
+  STOCK_INTAKE_VIEWS,
   STOCK_LOT_STATUSES,
   type StockAdjustmentDirection,
   type StockAdjustmentReason,
+  type StockIntakeView,
   type StockLotStatus,
 } from "./types";
 
@@ -207,15 +212,76 @@ export type ListMovementsQuery = z.infer<typeof listMovementsQuerySchema>;
 
 // ─── Eligible-purchases list query ───────────────────────────────────────────
 
+// `view` selects between PENDING (default) and SKIPPED rows. We intentionally
+// keep this a stringly-typed enum on the wire (?view=pending|skipped) so the
+// URL stays readable; the schema narrows to the literal union.
+const viewField = z
+  .preprocess(
+    (v) => (typeof v === "string" && v.trim() !== "" ? v.trim() : undefined),
+    z
+      .enum(
+        STOCK_INTAKE_VIEWS as unknown as [StockIntakeView, ...StockIntakeView[]],
+        { error: t.errors.intakeViewInvalid },
+      )
+      .optional(),
+  )
+  .optional();
+
 export const listEligiblePurchasesQuerySchema = z.object({
   q: optionalSearch,
   branchId: optionalUuid,
+  view: viewField,
   page: pageField,
   pageSize: pageSizeField,
 });
 
 export type ListEligiblePurchasesQuery = z.infer<
   typeof listEligiblePurchasesQuerySchema
+>;
+
+// ─── Bulk create from purchase ───────────────────────────────────────────────
+
+// Single create reuses this same schema with `[id]`, so the bulk endpoint is
+// authoritative. We dedupe on the server too (defence-in-depth) but the
+// schema-level dedupe via `Set` keeps the wire payload small.
+export const bulkCreateLotsFromPurchaseSchema = z.object({
+  ticketIds: z
+    .array(uuid(t.errors.purchaseTicketIdInvalid))
+    .min(1, t.errors.bulkTicketIdsEmpty)
+    .max(STOCK_INTAKE_BULK_MAX, t.errors.bulkTicketIdsTooMany),
+});
+
+export type BulkCreateLotsFromPurchaseInput = z.infer<
+  typeof bulkCreateLotsFromPurchaseSchema
+>;
+
+// ─── Skip / undo-skip ────────────────────────────────────────────────────────
+
+const skipReasonField = z.preprocess(
+  (v) => {
+    if (v === null || v === undefined) return undefined;
+    const s = String(v).trim();
+    return s === "" ? undefined : s;
+  },
+  z
+    .string()
+    .min(STOCK_INTAKE_SKIP_REASON_MIN, t.errors.skipReasonTooShort)
+    .max(STOCK_INTAKE_SKIP_REASON_MAX, t.errors.skipReasonTooLong),
+);
+
+export const skipStockIntakeSchema = z.object({
+  purchaseTicketId: uuid(t.errors.purchaseTicketIdInvalid),
+  reason: skipReasonField,
+});
+
+export type SkipStockIntakeInput = z.infer<typeof skipStockIntakeSchema>;
+
+export const undoSkipStockIntakeSchema = z.object({
+  purchaseTicketId: uuid(t.errors.purchaseTicketIdInvalid),
+});
+
+export type UndoSkipStockIntakeInput = z.infer<
+  typeof undoSkipStockIntakeSchema
 >;
 
 // Re-exported helpers so the rest of the module shares the same status/type

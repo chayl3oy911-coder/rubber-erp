@@ -56,14 +56,26 @@ function parseSafe(s: string | undefined): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-function lotToLine(lot: EligibleLotForSaleDTO): SalesLineFormValue {
+// Brief visual cue to draw the operator's eye to a row (newly added or
+// re-visited via "อยู่ในบิลแล้ว"). Pure CSS class toggle.
+function flashRow(el: HTMLElement): void {
+  el.classList.add("ring-2", "ring-emerald-500", "ring-offset-2");
+  window.setTimeout(() => {
+    el.classList.remove("ring-2", "ring-emerald-500", "ring-offset-2");
+  }, 800);
+}
+
+function lotToLine(
+  lot: EligibleLotForSaleDTO,
+  grossWeight: string,
+): SalesLineFormValue {
   return {
     stockLotId: lot.id,
     lotNo: lot.lotNo,
     rubberType: lot.rubberType,
     effectiveCostPerKg: lot.effectiveCostPerKg,
     remainingWeight: lot.remainingWeight,
-    grossWeight: lot.remainingWeight,
+    grossWeight,
   };
 }
 
@@ -392,53 +404,52 @@ function LinesEditForm({ sale }: { sale: SalesOrderDTO }) {
   }, [sale.lines, state.values?.lines]);
 
   const [lines, setLines] = useState<SalesLineFormValue[]>(initialLines);
-  const lineRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
+  // Refs to the rendered <li> per line so the picker's "อยู่ในบิลแล้ว"
+  // button (and the post-add scroll cue) can target the correct row.
+  const lineRefs = useRef<Map<string, HTMLLIElement | null>>(new Map());
 
   const setLineRef = useCallback(
-    (stockLotId: string) => (el: HTMLInputElement | null) => {
+    (stockLotId: string) => (el: HTMLLIElement | null) => {
       if (el) lineRefs.current.set(stockLotId, el);
       else lineRefs.current.delete(stockLotId);
     },
     [],
   );
 
-  const selectedLotIds = useMemo(
-    () => new Set(lines.map((l) => l.stockLotId)),
+  // Map<stockLotId, grossWeight> — the picker uses this to (a) tag rows as
+  // "อยู่ในบิลแล้ว" and (b) show the persistent post-sale remaining figure
+  // for those rows.
+  const selectedLines = useMemo(
+    () => new Map(lines.map((l) => [l.stockLotId, l.grossWeight])),
     [lines],
   );
 
-  const handleAdd = useCallback((lot: EligibleLotForSaleDTO) => {
-    setLines((prev) => {
-      if (prev.some((l) => l.stockLotId === lot.id)) return prev;
-      return [...prev, lotToLine(lot)];
-    });
-    window.setTimeout(() => {
-      lineRefs.current.get(lot.id)?.focus();
-      lineRefs.current.get(lot.id)?.select?.();
-    }, 0);
-  }, []);
+  // Add a lot using the gross-weight string the picker validated. From this
+  // point grossWeight is locked — to change it the operator removes the
+  // line and adds the lot again (this matches the new-form UX exactly).
+  const handleAdd = useCallback(
+    (lot: EligibleLotForSaleDTO, grossWeight: string) => {
+      setLines((prev) => {
+        if (prev.some((l) => l.stockLotId === lot.id)) return prev;
+        return [...prev, lotToLine(lot, grossWeight)];
+      });
+      window.setTimeout(() => {
+        const el = lineRefs.current.get(lot.id);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          flashRow(el);
+        }
+      }, 0);
+    },
+    [],
+  );
 
   const handleRequestFocus = useCallback((stockLotId: string) => {
     const el = lineRefs.current.get(stockLotId);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.focus();
-      el.select?.();
+      flashRow(el);
     }
-  }, []);
-
-  const handleChangeGross = useCallback((index: number, next: string) => {
-    setLines((prev) =>
-      prev.map((l, i) => (i === index ? { ...l, grossWeight: next } : l)),
-    );
-  }, []);
-
-  const handleUseAll = useCallback((index: number) => {
-    setLines((prev) =>
-      prev.map((l, i) =>
-        i === index ? { ...l, grossWeight: l.remainingWeight } : l,
-      ),
-    );
   }, []);
 
   const handleRemove = useCallback((index: number) => {
@@ -470,7 +481,7 @@ function LinesEditForm({ sale }: { sale: SalesOrderDTO }) {
         <div className="order-2 xl:order-1">
           <SalesLotPicker
             branchId={sale.branchId}
-            selectedLotIds={selectedLotIds}
+            selectedLines={selectedLines}
             onAdd={handleAdd}
             onRequestFocus={handleRequestFocus}
           />
@@ -504,8 +515,6 @@ function LinesEditForm({ sale }: { sale: SalesOrderDTO }) {
                       index={idx}
                       line={line}
                       error={state.lineErrors?.[idx]}
-                      onChangeGross={(next) => handleChangeGross(idx, next)}
-                      onUseAll={() => handleUseAll(idx)}
                       onRemove={() => handleRemove(idx)}
                     />
                   ))}

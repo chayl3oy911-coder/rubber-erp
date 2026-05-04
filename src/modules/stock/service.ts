@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma, type StockLot } from "@prisma/client";
+import { Prisma, type PurchaseTicket, type StockLot } from "@prisma/client";
 
 import type { AuthenticatedUser } from "@/shared/auth/types";
 import { prisma } from "@/shared/lib/prisma";
@@ -20,11 +20,15 @@ import {
   STOCK_PAGE_SIZE_DEFAULT,
   STOCK_PAGE_SIZE_MAX,
   type AdjustStockInput,
+  type BulkCreateLotsFromPurchaseInput,
   type CreateLotFromPurchaseInput,
+  type SkipStockIntakeInput,
+  type UndoSkipStockIntakeInput,
 } from "./schemas";
 import {
   type StockAdjustmentDirection,
   type StockAdjustmentReason,
+  type StockIntakeView,
   type StockLotStatus,
   type StockMovementType,
 } from "./types";
@@ -100,6 +104,35 @@ export class CannotAdjustDepletedError extends Error {
   constructor() {
     super(t.errors.cannotAdjustDepleted);
     this.name = "CannotAdjustDepletedError";
+  }
+}
+
+// ─── Step 11 — stock intake state machine errors ───────────────────────────
+//
+// These are thrown when the *intake-status precondition* fails. They are
+// distinct from `StockLotAlreadyExistsError` (which is keyed on the unique
+// constraint and used as a race-tiebreaker in `createLotFromPurchase`).
+// The HTTP layer maps both to 409 but with different message bodies, so the
+// UI can show "ใบนี้รับเข้าแล้ว" vs. "เพิ่งมีคนสร้าง Lot ก่อนคุณ" appropriately.
+
+export class StockIntakeAlreadyReceivedError extends Error {
+  constructor() {
+    super(t.errors.intakeAlreadyReceived);
+    this.name = "StockIntakeAlreadyReceivedError";
+  }
+}
+
+export class StockIntakeAlreadySkippedError extends Error {
+  constructor() {
+    super(t.errors.intakeAlreadySkipped);
+    this.name = "StockIntakeAlreadySkippedError";
+  }
+}
+
+export class StockIntakeNotSkippedError extends Error {
+  constructor() {
+    super(t.errors.intakeNotSkipped);
+    this.name = "StockIntakeNotSkippedError";
   }
 }
 
@@ -409,6 +442,8 @@ export async function listMovementsForLot(
 export type ListEligiblePurchasesOptions = {
   q?: string;
   branchId?: string;
+  /** "pending" (default) or "skipped". RECEIVED is intentionally unsupported. */
+  view?: StockIntakeView;
   page?: number;
   pageSize?: number;
 };
@@ -420,25 +455,34 @@ export type ListEligiblePurchasesResult = {
   pageSize: number;
 };
 
-export async function listEligiblePurchases(
+/**
+ * Build the `where` clause shared by `listEligiblePurchases` and the count
+ * helper. Centralising it ensures the tab counts always match what the list
+ * would actually return for the same filters.
+ */
+function buildEligiblePurchasesWhere(
   actor: AuthenticatedUser,
-  opts: ListEligiblePurchasesOptions = {},
-): Promise<ListEligiblePurchasesResult> {
-  const page = Math.max(1, opts.page ?? 1);
-  const pageSize = Math.min(
-    STOCK_PAGE_SIZE_MAX,
-    Math.max(1, opts.pageSize ?? STOCK_PAGE_SIZE_DEFAULT),
-  );
+  opts: ListEligiblePurchasesOptions,
+): Prisma.PurchaseTicketWhereInput | null {
+  const view: StockIntakeView = opts.view ?? "pending";
 
   const where: Prisma.PurchaseTicketWhereInput = {
     status: "APPROVED",
     isActive: true,
-    stockLot: { is: null },
+    stockIntakeStatus: view === "pending" ? "PENDING" : "SKIPPED",
   };
+
+  // Defence-in-depth: even though the migration backfilled RECEIVED on
+  // tickets that already have a StockLot, we additionally require
+  // `stockLot { is: null }` for the PENDING view so a hypothetically-bad
+  // row never reaches the UI as "ready to create" only to error out.
+  if (view === "pending") {
+    where.stockLot = { is: null };
+  }
 
   if (!actor.isSuperAdmin) {
     if (opts.branchId && !actor.branchIds.includes(opts.branchId)) {
-      return { tickets: [], total: 0, page, pageSize };
+      return null; // out-of-scope branch
     }
     where.branchId = opts.branchId
       ? opts.branchId
@@ -466,20 +510,44 @@ export async function listEligiblePurchases(
     }
   }
 
+  return where;
+}
+
+const ELIGIBLE_PURCHASE_SELECT = {
+  id: true,
+  branchId: true,
+  ticketNo: true,
+  netWeight: true,
+  totalAmount: true,
+  pricePerKg: true,
+  createdAt: true,
+  stockIntakeStatus: true,
+  stockIntakeReceivedAt: true,
+  stockIntakeSkippedAt: true,
+  stockIntakeSkipReason: true,
+  branch: { select: { id: true, code: true, name: true } },
+  customer: { select: { id: true, code: true, fullName: true } },
+} as const;
+
+export async function listEligiblePurchases(
+  actor: AuthenticatedUser,
+  opts: ListEligiblePurchasesOptions = {},
+): Promise<ListEligiblePurchasesResult> {
+  const page = Math.max(1, opts.page ?? 1);
+  const pageSize = Math.min(
+    STOCK_PAGE_SIZE_MAX,
+    Math.max(1, opts.pageSize ?? STOCK_PAGE_SIZE_DEFAULT),
+  );
+
+  const where = buildEligiblePurchasesWhere(actor, opts);
+  if (where === null) {
+    return { tickets: [], total: 0, page, pageSize };
+  }
+
   const [rows, total] = await Promise.all([
     prisma.purchaseTicket.findMany({
       where,
-      select: {
-        id: true,
-        branchId: true,
-        ticketNo: true,
-        netWeight: true,
-        totalAmount: true,
-        pricePerKg: true,
-        createdAt: true,
-        branch: { select: { id: true, code: true, name: true } },
-        customer: { select: { id: true, code: true, fullName: true } },
-      },
+      select: ELIGIBLE_PURCHASE_SELECT,
       orderBy: [{ createdAt: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -495,6 +563,28 @@ export async function listEligiblePurchases(
   };
 }
 
+/**
+ * Returns counts for the tab strip. We run the two queries in parallel so
+ * the page render is not blocked on a serial pair of round-trips.
+ *
+ * `branchId` and `q` are *not* included here on purpose: tab counts should
+ * reflect the user's full scope so they can see "8 skipped" even when
+ * they've drilled into a specific search/branch on the PENDING tab.
+ */
+export async function countEligiblePurchasesByView(
+  actor: AuthenticatedUser,
+): Promise<{ pending: number; skipped: number }> {
+  const pendingWhere = buildEligiblePurchasesWhere(actor, { view: "pending" });
+  const skippedWhere = buildEligiblePurchasesWhere(actor, { view: "skipped" });
+
+  const [pending, skipped] = await Promise.all([
+    pendingWhere ? prisma.purchaseTicket.count({ where: pendingWhere }) : 0,
+    skippedWhere ? prisma.purchaseTicket.count({ where: skippedWhere }) : 0,
+  ]);
+
+  return { pending, skipped };
+}
+
 // ─── Create lot from purchase ────────────────────────────────────────────────
 
 export async function createLotFromPurchase(
@@ -506,9 +596,11 @@ export async function createLotFromPurchase(
     where: { id: input.purchaseTicketId },
     select: {
       id: true,
+      ticketNo: true,
       branchId: true,
       status: true,
       isActive: true,
+      stockIntakeStatus: true,
       rubberType: true,
       netWeight: true,
       totalAmount: true,
@@ -521,6 +613,17 @@ export async function createLotFromPurchase(
   }
   if (!ticket.isActive) throw new PurchaseTicketInactiveError();
   if (ticket.status !== "APPROVED") throw new PurchaseTicketNotApprovedError();
+
+  // Step 11 — intake state machine guard. We check this *before* the
+  // existing `stockLot` check so the user gets a sharper diagnostic
+  // ("already received" / "already skipped") rather than the legacy
+  // "lot already exists" message, which only made sense pre-Step-11.
+  if (ticket.stockIntakeStatus === "RECEIVED") {
+    throw new StockIntakeAlreadyReceivedError();
+  }
+  if (ticket.stockIntakeStatus === "SKIPPED") {
+    throw new StockIntakeAlreadySkippedError();
+  }
   if (ticket.stockLot) throw new StockLotAlreadyExistsError();
 
   const initialWeight = new Prisma.Decimal(ticket.netWeight);
@@ -530,6 +633,22 @@ export async function createLotFromPurchase(
   for (let attempt = 0; attempt < CREATE_RETRY_LIMIT; attempt++) {
     try {
       const created = await prisma.$transaction(async (tx) => {
+        // Re-check intake status *inside* the tx — if a concurrent skip
+        // landed between our pre-read and the tx start, abort cleanly.
+        const fresh = await tx.purchaseTicket.findUnique({
+          where: { id: ticket.id },
+          select: { stockIntakeStatus: true, isActive: true },
+        });
+        if (!fresh || !fresh.isActive) {
+          throw new PurchaseTicketInactiveError();
+        }
+        if (fresh.stockIntakeStatus === "RECEIVED") {
+          throw new StockIntakeAlreadyReceivedError();
+        }
+        if (fresh.stockIntakeStatus === "SKIPPED") {
+          throw new StockIntakeAlreadySkippedError();
+        }
+
         const lotNo = await generateNextLotNo(tx, ticket.branchId);
         const lot = await tx.stockLot.create({
           data: {
@@ -563,6 +682,18 @@ export async function createLotFromPurchase(
           },
         });
 
+        // Flip the intake axis to RECEIVED. We snapshot the timestamp
+        // inside the same transaction so a future audit reader can rely
+        // on `stockIntakeReceivedAt` matching `StockMovement.createdAt`
+        // for `PURCHASE_IN` to within microseconds.
+        await tx.purchaseTicket.update({
+          where: { id: ticket.id },
+          data: {
+            stockIntakeStatus: "RECEIVED",
+            stockIntakeReceivedAt: new Date(),
+          },
+        });
+
         await tx.auditLog.create({
           data: {
             actorId: actor.id,
@@ -585,6 +716,7 @@ export async function createLotFromPurchase(
             } as Prisma.InputJsonValue,
             metadata: buildAuditMetadata(meta, {
               purchaseTicketId: ticket.id,
+              ticketNo: ticket.ticketNo,
               lotNo: lot.lotNo,
               initialWeight: initialWeight.toString(),
               costAmount: costAmount.toString(),
@@ -592,6 +724,8 @@ export async function createLotFromPurchase(
               movementId: movement.id,
               movementType: "PURCHASE_IN",
               autoGeneratedLotNo: true,
+              stockIntakeStatusBefore: "PENDING",
+              stockIntakeStatusAfter: "RECEIVED",
             }),
             ipAddress: meta?.ipAddress ?? null,
             userAgent: meta?.userAgent ?? null,
@@ -622,6 +756,352 @@ export async function createLotFromPurchase(
   }
 
   throw new StockLotAutoGenError();
+}
+
+// ─── Bulk create from purchase ──────────────────────────────────────────────
+//
+// Each ticket is processed in its OWN transaction. We deliberately do NOT
+// wrap the whole batch in a single $transaction:
+//
+//   1. Single-tx semantics would make any one bad ticket roll back the
+//      successful ones — terrible UX for "receive 50 tickets at once".
+//   2. Long-running multi-ticket transactions hold row locks across all
+//      `PurchaseTicket` and `StockLot` rows for the duration, which would
+//      block concurrent users.
+//   3. Per-ticket transactions also make the failure list precise: each
+//      failure carries its own error message and ticketNo for the toast.
+//
+// Errors that are intrinsic to a single ticket (not approved, already
+// received, etc.) are caught and recorded in `failed`. Programmer errors
+// (e.g. `PrismaClientUnknownRequestError`) re-throw so they surface as 500.
+
+export type BulkCreateResultItem = {
+  ticketId: string;
+  ticketNo: string | null;
+  lotId: string;
+  lotNo: string;
+};
+
+export type BulkCreateFailureItem = {
+  ticketId: string;
+  ticketNo: string | null;
+  reason: string;
+};
+
+export type BulkCreateLotsResult = {
+  created: BulkCreateResultItem[];
+  failed: BulkCreateFailureItem[];
+};
+
+function isExpectedIntakeError(error: unknown): error is Error {
+  return (
+    error instanceof PurchaseTicketNotFoundForStockError ||
+    error instanceof PurchaseTicketBranchMismatchForStockError ||
+    error instanceof PurchaseTicketInactiveError ||
+    error instanceof PurchaseTicketNotApprovedError ||
+    error instanceof StockIntakeAlreadyReceivedError ||
+    error instanceof StockIntakeAlreadySkippedError ||
+    error instanceof StockIntakeNotSkippedError ||
+    error instanceof StockLotAlreadyExistsError ||
+    error instanceof StockBranchNotInScopeError
+  );
+}
+
+export async function bulkCreateLotsFromPurchase(
+  actor: AuthenticatedUser,
+  input: BulkCreateLotsFromPurchaseInput,
+  meta?: StockAuditMeta,
+): Promise<BulkCreateLotsResult> {
+  // Dedupe at the service boundary — defence-in-depth against a client
+  // that sends the same id twice. The schema validates length AFTER the
+  // dedupe at this point would mask the original count to the audit log,
+  // so we dedupe but record both numbers in metadata.
+  const dedupedIds = Array.from(new Set(input.ticketIds));
+
+  // Pre-fetch ticketNos once so failure entries always carry a human-
+  // readable label, even when the per-ticket service call fails before we
+  // can read the row ourselves.
+  const ticketNoLookup = new Map<string, string>(
+    (
+      await prisma.purchaseTicket.findMany({
+        where: { id: { in: dedupedIds } },
+        select: { id: true, ticketNo: true },
+      })
+    ).map((t) => [t.id, t.ticketNo]),
+  );
+
+  const created: BulkCreateResultItem[] = [];
+  const failed: BulkCreateFailureItem[] = [];
+
+  for (const ticketId of dedupedIds) {
+    const ticketNo = ticketNoLookup.get(ticketId) ?? null;
+    try {
+      const lot = await createLotFromPurchase(
+        actor,
+        { purchaseTicketId: ticketId },
+        meta,
+      );
+      created.push({
+        ticketId,
+        ticketNo,
+        lotId: lot.id,
+        lotNo: lot.lotNo,
+      });
+    } catch (error) {
+      if (isExpectedIntakeError(error)) {
+        failed.push({
+          ticketId,
+          ticketNo,
+          reason: error.message,
+        });
+      } else {
+        // Unexpected DB / connection errors — surface 500 to the caller
+        // so we don't silently swallow them. Successful items are still
+        // committed (separate tx per ticket) and the request is partial.
+        throw error;
+      }
+    }
+  }
+
+  // Summary audit row — separate from the per-lot rows that
+  // `createLotFromPurchase` already wrote. This gives us a single
+  // chronological breadcrumb per bulk action.
+  //
+  // `AuditLog.entityId` is required (String @db.Uuid). We anchor the
+  // summary to the FIRST id in the deduped batch — the metadata payload
+  // carries the full breakdown of which ones succeeded/failed, so the
+  // anchor is just a "where do I find this row when filtering by entity"
+  // pivot. If somehow no ids are present (cannot happen — schema has
+  // `.min(1)`), we skip the summary; per-row audits still cover the trail.
+  if (dedupedIds.length > 0) {
+    const anchorTicketId = dedupedIds[0];
+
+    // Best-effort branch tag for the summary so a per-branch audit query
+    // surfaces it. Pick the branch of the first successful create when
+    // possible; otherwise fall back to whatever branch the anchor ticket
+    // belonged to (read-only, safe).
+    let summaryBranchId: string | null = null;
+    if (created.length > 0) {
+      const firstLot = await prisma.stockLot.findUnique({
+        where: { id: created[0]!.lotId },
+        select: { branchId: true },
+      });
+      summaryBranchId = firstLot?.branchId ?? null;
+    } else {
+      summaryBranchId = ticketNoLookup.size
+        ? (
+            await prisma.purchaseTicket.findUnique({
+              where: { id: anchorTicketId },
+              select: { branchId: true },
+            })
+          )?.branchId ?? null
+        : null;
+    }
+
+    await prisma.auditLog.create({
+      data: {
+        actorId: actor.id,
+        branchId: summaryBranchId,
+        entityType: "PurchaseTicketBulkIntake",
+        entityId: anchorTicketId,
+        action: "bulk_create_stock_lot_from_purchase",
+        before: Prisma.DbNull,
+        after: Prisma.DbNull,
+        metadata: buildAuditMetadata(meta, {
+          requestedCount: input.ticketIds.length,
+          dedupedCount: dedupedIds.length,
+          successCount: created.length,
+          failureCount: failed.length,
+          successes: created.map((r) => ({
+            ticketId: r.ticketId,
+            ticketNo: r.ticketNo,
+            lotId: r.lotId,
+            lotNo: r.lotNo,
+          })),
+          failures: failed.map((f) => ({
+            ticketId: f.ticketId,
+            ticketNo: f.ticketNo,
+            reason: f.reason,
+          })),
+        }),
+        ipAddress: meta?.ipAddress ?? null,
+        userAgent: meta?.userAgent ?? null,
+      },
+    });
+  }
+
+  return { created, failed };
+}
+
+// ─── Skip stock intake ──────────────────────────────────────────────────────
+
+function intakeTicketSnapshot(t: PurchaseTicket): Prisma.InputJsonValue {
+  return {
+    id: t.id,
+    branchId: t.branchId,
+    ticketNo: t.ticketNo,
+    status: t.status,
+    isActive: t.isActive,
+    stockIntakeStatus: t.stockIntakeStatus,
+    stockIntakeReceivedAt: t.stockIntakeReceivedAt
+      ? t.stockIntakeReceivedAt.toISOString()
+      : null,
+    stockIntakeSkippedAt: t.stockIntakeSkippedAt
+      ? t.stockIntakeSkippedAt.toISOString()
+      : null,
+    stockIntakeSkippedById: t.stockIntakeSkippedById,
+    stockIntakeSkipReason: t.stockIntakeSkipReason,
+  } as Prisma.InputJsonValue;
+}
+
+export async function skipStockIntake(
+  actor: AuthenticatedUser,
+  input: SkipStockIntakeInput,
+  meta?: StockAuditMeta,
+): Promise<EligiblePurchaseDTO> {
+  const head = await prisma.purchaseTicket.findUnique({
+    where: { id: input.purchaseTicketId },
+    select: { id: true, branchId: true },
+  });
+  if (!head) throw new PurchaseTicketNotFoundForStockError();
+  ensureBranchInScope(actor, head.branchId);
+
+  const result = await prisma.$transaction(async (tx) => {
+    // Lock the ticket row so a concurrent `createLotFromPurchase` cannot
+    // flip status to RECEIVED between our read and update. Postgres
+    // serialisable would also work, but FOR UPDATE is the lighter-weight
+    // option used elsewhere in this file (`adjustStock`).
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "PurchaseTicket" WHERE id = ${input.purchaseTicketId}::uuid FOR UPDATE
+    `;
+
+    const existing = await tx.purchaseTicket.findUnique({
+      where: { id: input.purchaseTicketId },
+    });
+    if (!existing) throw new PurchaseTicketNotFoundForStockError();
+    if (!existing.isActive) throw new PurchaseTicketInactiveError();
+    if (existing.status !== "APPROVED") {
+      throw new PurchaseTicketNotApprovedError();
+    }
+    if (existing.stockIntakeStatus === "RECEIVED") {
+      throw new StockIntakeAlreadyReceivedError();
+    }
+    if (existing.stockIntakeStatus === "SKIPPED") {
+      throw new StockIntakeAlreadySkippedError();
+    }
+
+    const updated = await tx.purchaseTicket.update({
+      where: { id: existing.id },
+      data: {
+        stockIntakeStatus: "SKIPPED",
+        stockIntakeSkippedAt: new Date(),
+        stockIntakeSkippedById: actor.id,
+        stockIntakeSkipReason: input.reason,
+      },
+      select: ELIGIBLE_PURCHASE_SELECT,
+    });
+    const updatedFull = await tx.purchaseTicket.findUnique({
+      where: { id: existing.id },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        branchId: existing.branchId,
+        entityType: "PurchaseTicket",
+        entityId: existing.id,
+        action: "skip_stock_intake",
+        before: intakeTicketSnapshot(existing),
+        after: updatedFull
+          ? intakeTicketSnapshot(updatedFull)
+          : Prisma.DbNull,
+        metadata: buildAuditMetadata(meta, {
+          ticketNo: existing.ticketNo,
+          stockIntakeStatusBefore: existing.stockIntakeStatus,
+          stockIntakeStatusAfter: "SKIPPED",
+          reason: input.reason,
+        }),
+        ipAddress: meta?.ipAddress ?? null,
+        userAgent: meta?.userAgent ?? null,
+      },
+    });
+
+    return updated;
+  });
+
+  return toEligiblePurchaseDTO(result);
+}
+
+// ─── Undo skip stock intake ─────────────────────────────────────────────────
+
+export async function undoSkipStockIntake(
+  actor: AuthenticatedUser,
+  input: UndoSkipStockIntakeInput,
+  meta?: StockAuditMeta,
+): Promise<EligiblePurchaseDTO> {
+  const head = await prisma.purchaseTicket.findUnique({
+    where: { id: input.purchaseTicketId },
+    select: { id: true, branchId: true },
+  });
+  if (!head) throw new PurchaseTicketNotFoundForStockError();
+  ensureBranchInScope(actor, head.branchId);
+
+  const result = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "PurchaseTicket" WHERE id = ${input.purchaseTicketId}::uuid FOR UPDATE
+    `;
+
+    const existing = await tx.purchaseTicket.findUnique({
+      where: { id: input.purchaseTicketId },
+    });
+    if (!existing) throw new PurchaseTicketNotFoundForStockError();
+    if (existing.stockIntakeStatus !== "SKIPPED") {
+      throw new StockIntakeNotSkippedError();
+    }
+    // We don't gate this on `isActive` / `status === APPROVED`: if those
+    // changed while the ticket was SKIPPED, the right thing to do is still
+    // restore the intake-axis to PENDING so the operator can re-evaluate.
+
+    const updated = await tx.purchaseTicket.update({
+      where: { id: existing.id },
+      data: {
+        stockIntakeStatus: "PENDING",
+        stockIntakeSkippedAt: null,
+        stockIntakeSkippedById: null,
+        stockIntakeSkipReason: null,
+      },
+      select: ELIGIBLE_PURCHASE_SELECT,
+    });
+    const updatedFull = await tx.purchaseTicket.findUnique({
+      where: { id: existing.id },
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        branchId: existing.branchId,
+        entityType: "PurchaseTicket",
+        entityId: existing.id,
+        action: "undo_skip_stock_intake",
+        before: intakeTicketSnapshot(existing),
+        after: updatedFull
+          ? intakeTicketSnapshot(updatedFull)
+          : Prisma.DbNull,
+        metadata: buildAuditMetadata(meta, {
+          ticketNo: existing.ticketNo,
+          stockIntakeStatusBefore: "SKIPPED",
+          stockIntakeStatusAfter: "PENDING",
+          previousSkipReason: existing.stockIntakeSkipReason,
+        }),
+        ipAddress: meta?.ipAddress ?? null,
+        userAgent: meta?.userAgent ?? null,
+      },
+    });
+
+    return updated;
+  });
+
+  return toEligiblePurchaseDTO(result);
 }
 
 // ─── Adjust stock (ADJUST_IN / ADJUST_OUT) ───────────────────────────────────

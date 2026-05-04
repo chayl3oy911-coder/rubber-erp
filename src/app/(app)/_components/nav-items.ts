@@ -20,6 +20,7 @@ export const navItems: NavItem[] = [
   { href: "/branches", label: "สาขา", icon: "branches" },
   { href: "/customers", label: "ลูกค้า", icon: "customers" },
   { href: "/purchases", label: "ใบรับซื้อ", icon: "purchase" },
+  { href: "/purchase-returns", label: "การคืนสินค้า", icon: "purchase" },
   { href: "/stock", label: "สต็อก", icon: "stock" },
   { href: "/production", label: "การผลิต", icon: "production" },
   { href: "/sales", label: "ขายโรงงาน", icon: "sales" },

@@ -8,18 +8,12 @@ import { salesT } from "@/modules/sales/i18n";
 
 const t = salesT();
 
-const inputClass =
-  "h-10 w-full rounded-lg border border-zinc-300 bg-white px-3 text-sm tabular-nums text-zinc-900 outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50";
-
-const useAllBtnClass =
-  "inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-emerald-600 bg-white px-3 text-xs font-semibold text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-500 dark:bg-zinc-900 dark:text-emerald-300";
-
 const removeBtnClass =
-  "inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg border border-red-300 bg-white px-3 text-xs font-semibold text-red-700 transition-colors hover:bg-red-50 dark:border-red-900 dark:bg-zinc-900 dark:text-red-300";
+  "inline-flex h-8 shrink-0 items-center justify-center whitespace-nowrap rounded-md border border-red-300 bg-white px-2.5 text-xs font-medium text-red-700 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-red-900 dark:bg-zinc-900 dark:text-red-300";
 
-function formatNumber(s: string, fractionDigits = 2): string {
-  const n = Number(s);
-  if (!Number.isFinite(n)) return s;
+function formatNumber(s: string | number, fractionDigits = 2): string {
+  const n = typeof s === "number" ? s : Number(s);
+  if (!Number.isFinite(n)) return String(s);
   return n.toLocaleString("th-TH", {
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits,
@@ -29,45 +23,46 @@ function formatNumber(s: string, fractionDigits = 2): string {
 type Props = {
   index: number;
   line: SalesLineFormValue;
+  /** Server-side per-line error from the previous submit, if any. */
   error?: string;
-  /** When true, all inputs/buttons are disabled (e.g. CONFIRMED edit). */
+  /** When true, all controls (e.g. the remove button) are disabled. */
   disabled?: boolean;
-  onChangeGross: (next: string) => void;
-  onUseAll: () => void;
   onRemove: () => void;
 };
 
 /**
- * Editable row for a single line in the sales bill.
+ * Compact, read-only line item shown after a lot has been added to the
+ * bill. The grossWeight is fixed at add time (set in the lot picker) and
+ * cannot be edited from the bill — to change a weight the operator must
+ * remove the line and add the lot again from the picker. This keeps each
+ * row very terse and avoids a stale "edit-and-forget-to-recompute" bug
+ * pattern.
  *
- * Renders the lot snapshot read-only (lotNo, rubberType, remaining,
- * cost/kg) plus an editable `grossWeight` input. The lot snapshot fields
- * come from `line` directly (set when the picker added it) so the row is
- * self-contained — no extra fetch needed even after a server validation
- * round-trip.
- *
- * The forwarded ref points at the gross-weight input so the parent can
- * focus it (e.g. when the user clicks "อยู่ในบิลแล้ว" in the picker).
+ * The forwarded ref points at the `<li>` element so the parent can
+ * `scrollIntoView` (and optionally flash) when the user clicks
+ * "อยู่ในบิลแล้ว" in the picker.
  */
-export const SalesLineRow = forwardRef<HTMLInputElement, Props>(
-  function SalesLineRow(
-    { index, line, error, disabled, onChangeGross, onUseAll, onRemove },
-    ref,
-  ) {
+export const SalesLineRow = forwardRef<HTMLLIElement, Props>(
+  function SalesLineRow({ index, line, error, disabled, onRemove }, ref) {
     const remainingNum = Number(line.remainingWeight);
     const grossNum = Number(line.grossWeight);
-    const exceeds =
-      Number.isFinite(remainingNum) &&
-      Number.isFinite(grossNum) &&
-      grossNum > remainingNum;
-    const empty = !line.grossWeight || grossNum <= 0;
+    // remainingAfter = remaining − sold, clamped at 0. Computed once at
+    // render; the value never changes for the lifetime of the line because
+    // grossWeight is locked in after add.
+    const remainingAfter =
+      Number.isFinite(remainingNum) && Number.isFinite(grossNum)
+        ? Math.max(0, remainingNum - grossNum)
+        : remainingNum;
 
     return (
       <li
+        ref={ref}
         data-line-index={index}
-        className="flex flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
+        tabIndex={-1}
+        className="flex flex-col gap-1.5 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none transition-colors target:bg-emerald-50 dark:border-zinc-800 dark:bg-zinc-900 dark:target:bg-emerald-950 sm:flex-row sm:items-center sm:gap-3"
       >
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        {/* Snapshot — single line on desktop, wraps gracefully on mobile */}
+        <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span className="font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-50">
             {line.lotNo || `Lot ${index + 1}`}
           </span>
@@ -76,78 +71,47 @@ export const SalesLineRow = forwardRef<HTMLInputElement, Props>(
               {rubberTypeLabel(line.rubberType) ?? line.rubberType}
             </span>
           ) : null}
-          <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            · {t.fields.remainingWeight}:{" "}
-            <span className="tabular-nums text-zinc-900 dark:text-zinc-50">
-              {formatNumber(line.remainingWeight, 2)} {t.units.kg}
+          <span className="text-xs text-zinc-700 dark:text-zinc-300">
+            ·{" "}
+            <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+              {t.misc.soldShortFormat(
+                formatNumber(line.grossWeight, 2),
+                t.units.kg,
+              )}
+            </span>
+          </span>
+          <span className="text-xs text-zinc-600 dark:text-zinc-400">
+            ·{" "}
+            <span className="tabular-nums">
+              {t.misc.remainingFromTotalFormat(
+                formatNumber(remainingAfter, 2),
+                formatNumber(line.remainingWeight, 2),
+                t.units.kg,
+              )}
             </span>
           </span>
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            · {t.fields.effectiveCostPerKg}:{" "}
-            <span className="tabular-nums text-zinc-900 dark:text-zinc-50">
-              {formatNumber(line.effectiveCostPerKg, 2)} {t.units.bahtPerKg}
+            ·{" "}
+            <span className="tabular-nums">
+              {t.misc.costShortFormat(formatNumber(line.effectiveCostPerKg, 2))}
             </span>
           </span>
         </div>
 
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
-          <div className="flex-1">
-            <label
-              htmlFor={`gross-${index}`}
-              className="mb-1 block text-xs text-zinc-600 dark:text-zinc-400"
-            >
-              {t.fields.lineGrossWeight} ({t.units.kg})
-            </label>
-            <input
-              id={`gross-${index}`}
-              ref={ref}
-              type="number"
-              step="0.01"
-              min="0"
-              max={line.remainingWeight || undefined}
-              inputMode="decimal"
-              className={inputClass}
-              value={line.grossWeight}
-              onChange={(e) => onChangeGross(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-                  e.preventDefault();
-                }
-              }}
-              onWheel={(e) => e.currentTarget.blur()}
-              disabled={disabled}
-              required
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              className={useAllBtnClass}
-              onClick={onUseAll}
-              disabled={disabled}
-            >
-              {t.actions.useAllRemaining}
-            </button>
-            <button
-              type="button"
-              className={removeBtnClass}
-              onClick={onRemove}
-              disabled={disabled}
-            >
-              {t.actions.removeLine}
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          className={removeBtnClass}
+          onClick={onRemove}
+          disabled={disabled}
+          title={t.actions.removeLine}
+        >
+          {t.actions.removeLine}
+        </button>
 
+        {/* Server validation error from previous submit (if any). */}
         {error ? (
-          <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-        ) : exceeds ? (
-          <p className="text-xs text-red-600 dark:text-red-400">
-            {t.errors.insufficientStock}
-          </p>
-        ) : empty ? (
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            {t.errors.lineGrossPositive}
+          <p className="basis-full text-xs text-red-600 dark:text-red-400">
+            {error}
           </p>
         ) : null}
       </li>

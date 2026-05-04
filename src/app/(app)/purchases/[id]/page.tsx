@@ -1,16 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { listPurchaseReturnsForTicket } from "@/modules/purchase-return/service";
 import { purchaseT } from "@/modules/purchase/i18n";
 import { rubberTypeLabel } from "@/modules/purchase/rubber-types";
 import { getPurchase } from "@/modules/purchase/service";
 import { hasPermission, requirePermission } from "@/shared/auth/dal";
+import { prisma } from "@/shared/lib/prisma";
 import { Card, CardContent } from "@/shared/ui";
 
 import { StatusActions } from "../_components/status-actions";
 import { StatusBadge } from "../_components/status-badge";
 
+import { PurchaseCancelAfterSkipButton } from "./_components/cancel-after-skip-button";
+import { PurchaseReturnHistoryList } from "./_components/return-history-list";
+
 const t = purchaseT();
+const primaryButtonClass =
+  "inline-flex h-9 items-center justify-center whitespace-nowrap rounded-lg bg-orange-600 px-3 text-sm font-medium text-white hover:bg-orange-500";
 
 const ghostLinkClass =
   "inline-flex h-9 items-center justify-center rounded-lg border border-zinc-300 bg-white px-3 text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800";
@@ -62,10 +69,47 @@ export default async function PurchaseDetailPage({
   const canEdit = hasPermission(me, "purchase.update");
   const canApprove = hasPermission(me, "purchase.approve");
   const canCancel = hasPermission(me, "purchase.cancel");
+  const canCancelAfterSkip = hasPermission(me, "purchase.cancelAfterSkip");
+  const canCreateReturn = hasPermission(me, "purchase.return.create");
+  const canReadReturns = hasPermission(me, "purchase.return.read");
 
   const editableInThisStatus =
     purchase.status === "DRAFT" || purchase.status === "WAITING_QC";
   const showEditLink = canEdit && editableInThisStatus;
+
+  // Decide which problem-flow entry point applies (Step 12).
+  //
+  //   Case A: APPROVED + SKIPPED + no stock lot → cancelPurchaseAfterSkip
+  //   Case B: APPROVED + RECEIVED + lot exists  → /purchase-returns/new?ticketId=…
+  //
+  // We resolve the lot here (single query, branch already enforced by
+  // getPurchase).
+  const linkedLot =
+    purchase.status === "APPROVED"
+      ? await prisma.stockLot.findUnique({
+          where: { sourcePurchaseTicketId: purchase.id },
+          select: { id: true, isActive: true, status: true },
+        })
+      : null;
+
+  const isCaseA =
+    purchase.status === "APPROVED" &&
+    purchase.stockIntakeStatus === "SKIPPED" &&
+    !linkedLot &&
+    canCancelAfterSkip;
+
+  const isCaseB =
+    purchase.status === "APPROVED" &&
+    purchase.stockIntakeStatus === "RECEIVED" &&
+    !!linkedLot &&
+    linkedLot.isActive &&
+    linkedLot.status !== "CANCELLED" &&
+    canCreateReturn;
+
+  // Return history — visible to anyone with purchase.return.read.
+  const returns = canReadReturns
+    ? await listPurchaseReturnsForTicket(me, purchase.id)
+    : [];
 
   return (
     <div className="flex flex-col gap-5">
@@ -209,11 +253,38 @@ export default async function PurchaseDetailPage({
                   canCancel,
                 }}
               />
+
+              {isCaseB ? (
+                <Link
+                  href={`/purchase-returns/new?ticketId=${purchase.id}`}
+                  className={primaryButtonClass}
+                >
+                  {t.actions.createReturn}
+                </Link>
+              ) : null}
+              {isCaseA ? (
+                <PurchaseCancelAfterSkipButton
+                  purchaseId={purchase.id}
+                  ticketNo={purchase.ticketNo}
+                />
+              ) : null}
+
               <Link href="/purchases" className={ghostLinkClass}>
                 {t.actions.back}
               </Link>
             </CardContent>
           </Card>
+
+          {canReadReturns ? (
+            <Card>
+              <CardContent className="flex flex-col gap-2">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+                  {t.actions.viewReturns}
+                </h2>
+                <PurchaseReturnHistoryList returns={returns} />
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardContent className="flex flex-col gap-3 text-sm">

@@ -18,6 +18,8 @@ const STYLES: Record<StockMovementType, string> = {
     "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-500/15 dark:text-fuchsia-300",
   CANCEL_REVERSE:
     "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
+  PURCHASE_RETURN_OUT:
+    "bg-orange-100 text-orange-800 dark:bg-orange-500/15 dark:text-orange-300",
 };
 
 type Props = {

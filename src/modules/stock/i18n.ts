@@ -26,6 +26,7 @@ type MovementTypeDict = {
   PRODUCTION_OUT: string;
   PRODUCTION_IN: string;
   CANCEL_REVERSE: string;
+  PURCHASE_RETURN_OUT: string;
 };
 
 type ReasonDict = {
@@ -121,6 +122,21 @@ type StockDict = {
     clear: string;
     prev: string;
     next: string;
+    // Step 11 — stock intake
+    bulkCreateAll: string;
+    bulkCreateSelected: string;
+    selectAll: string;
+    deselectAll: string;
+    skipIntake: string;
+    confirmSkipIntake: string;
+    cancelSkipIntake: string;
+    confirmSkipIntakePrompt: (ticketNo: string) => string;
+    confirmBulkCreatePrompt: (count: number) => string;
+    undoSkipIntake: string;
+    confirmUndoSkipPrompt: (ticketNo: string) => string;
+    viewPending: string;
+    viewSkipped: string;
+    submitting: string;
   };
   errors: {
     invalidJson: string;
@@ -149,6 +165,15 @@ type StockDict = {
     statusInvalid: string;
     rubberTypeInvalid: string;
     cannotAdjustDepleted: string;
+    // Step 11 — stock intake
+    intakeViewInvalid: string;
+    bulkTicketIdsEmpty: string;
+    bulkTicketIdsTooMany: string;
+    skipReasonTooShort: string;
+    skipReasonTooLong: string;
+    intakeAlreadyReceived: string;
+    intakeAlreadySkipped: string;
+    intakeNotSkipped: string;
   };
   empty: {
     list: string;
@@ -156,6 +181,7 @@ type StockDict = {
     noMovements: string;
     fromPurchaseEmpty: string;
     fromPurchaseNoResults: (q: string) => string;
+    skippedEmpty: string;
   };
   status: StatusDict;
   movementType: MovementTypeDict;
@@ -177,6 +203,26 @@ type StockDict = {
     paginationInfo: (from: number, to: number, total: number) => string;
     detailComputedHint: string;
     primaryBadge: string;
+    // Step 11 — stock intake
+    pendingCount: (n: number) => string;
+    skippedCount: (n: number) => string;
+    selectedCount: (n: number) => string;
+    skipReasonLabel: string;
+    skipReasonPlaceholder: string;
+    skipReasonHelp: string;
+    skippedAt: (iso: string) => string;
+    skippedReason: (text: string) => string;
+    intakeStatusReceived: string;
+    intakeStatusPending: string;
+    intakeStatusSkipped: string;
+    toastBulkSuccess: (n: number) => string;
+    toastBulkPartial: (success: number, failed: number) => string;
+    toastBulkAllFailed: (n: number) => string;
+    toastSingleSuccess: (lotNo: string) => string;
+    toastSkipSuccess: (ticketNo: string) => string;
+    toastUndoSkipSuccess: (ticketNo: string) => string;
+    toastDismiss: string;
+    failureLine: (ticketNo: string, reason: string) => string;
   };
 };
 
@@ -267,6 +313,23 @@ const TH: StockDict = {
     clear: "ล้าง",
     prev: "← ก่อนหน้า",
     next: "ถัดไป →",
+    bulkCreateAll: "รับเข้า Stock ทั้งหมด",
+    bulkCreateSelected: "รับเข้า Stock ที่เลือก",
+    selectAll: "เลือกทั้งหมด",
+    deselectAll: "ยกเลิกการเลือก",
+    skipIntake: "ข้ามการรับเข้า Stock",
+    confirmSkipIntake: "ยืนยันข้าม",
+    cancelSkipIntake: "ยกเลิก",
+    confirmSkipIntakePrompt: (ticketNo) =>
+      `ยืนยันข้ามการรับเข้า Stock ของใบ ${ticketNo}?`,
+    confirmBulkCreatePrompt: (count) =>
+      `ยืนยันการรับเข้า Stock จากใบรับซื้อ ${count} ใบ?`,
+    undoSkipIntake: "นำกลับมารอรับเข้า",
+    confirmUndoSkipPrompt: (ticketNo) =>
+      `ยืนยันนำใบ ${ticketNo} กลับมารอรับเข้า Stock?`,
+    viewPending: "รอรับเข้า",
+    viewSkipped: "ที่ข้าม",
+    submitting: "กำลังบันทึก...",
   },
   errors: {
     invalidJson: "รูปแบบข้อมูลไม่ถูกต้อง",
@@ -299,6 +362,14 @@ const TH: StockDict = {
     rubberTypeInvalid: "ชนิดยางไม่ถูกต้อง",
     cannotAdjustDepleted:
       "Lot นี้หมดแล้ว ไม่สามารถปรับออกเพิ่มได้ (ปรับเข้าเพื่อรับน้ำหนักกลับยังทำได้)",
+    intakeViewInvalid: "มุมมองรายการรับเข้าไม่ถูกต้อง",
+    bulkTicketIdsEmpty: "กรุณาเลือกใบรับซื้ออย่างน้อย 1 รายการ",
+    bulkTicketIdsTooMany: "เลือกได้ไม่เกิน 50 ใบต่อครั้ง",
+    skipReasonTooShort: "กรุณาระบุเหตุผลอย่างน้อย 5 ตัวอักษร",
+    skipReasonTooLong: "เหตุผลยาวเกิน 500 ตัวอักษร",
+    intakeAlreadyReceived: "ใบรับซื้อนี้ได้รับเข้า Stock แล้ว",
+    intakeAlreadySkipped: "ใบรับซื้อนี้ถูกข้ามการรับเข้าไว้แล้ว",
+    intakeNotSkipped: "ใบรับซื้อนี้ไม่ได้อยู่ในสถานะข้ามการรับเข้า",
   },
   empty: {
     list: "ยังไม่มี Stock Lot ในระบบ",
@@ -307,6 +378,7 @@ const TH: StockDict = {
     fromPurchaseEmpty:
       "ไม่มีใบรับซื้อที่อนุมัติแล้วและรอรับเข้า Stock ในขณะนี้",
     fromPurchaseNoResults: (q) => `ไม่พบใบรับซื้อที่ตรงกับ "${q}"`,
+    skippedEmpty: "ยังไม่มีใบรับซื้อที่ถูกข้ามการรับเข้า",
   },
   status: {
     ACTIVE: "ใช้งานได้",
@@ -321,6 +393,7 @@ const TH: StockDict = {
     PRODUCTION_OUT: "ใช้ในการผลิต",
     PRODUCTION_IN: "ผลิตเข้า",
     CANCEL_REVERSE: "ย้อนยกเลิก",
+    PURCHASE_RETURN_OUT: "คืนสินค้าให้ผู้ขาย",
   },
   reason: {
     WATER_LOSS: "น้ำหนักสูญเสียจากการเก็บ",
@@ -347,6 +420,36 @@ const TH: StockDict = {
       `แสดง ${from}–${to} จากทั้งหมด ${total}`,
     detailComputedHint: "ค่าที่คำนวณโดยระบบ — UI ใช้แสดงเท่านั้น",
     primaryBadge: "บัญชีหลัก",
+    pendingCount: (n) => `รอรับเข้า (${n})`,
+    skippedCount: (n) => `ที่ข้าม (${n})`,
+    selectedCount: (n) => `เลือกแล้ว ${n}`,
+    skipReasonLabel: "เหตุผลที่ข้าม",
+    skipReasonPlaceholder: "ระบุเหตุผล (อย่างน้อย 5 ตัวอักษร)",
+    skipReasonHelp: "เหตุผลที่ข้ามการรับเข้า — ต้องระบุเพื่อตรวจสอบย้อนหลังได้",
+    skippedAt: (iso) => {
+      const d = new Date(iso);
+      return `ข้ามเมื่อ ${d.toLocaleString("th-TH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    },
+    skippedReason: (text) => `เหตุผล: ${text}`,
+    intakeStatusReceived: "รับเข้าแล้ว",
+    intakeStatusPending: "รอรับเข้า",
+    intakeStatusSkipped: "ข้ามแล้ว",
+    toastBulkSuccess: (n) => `สร้าง Stock Lot สำเร็จ ${n} ใบ`,
+    toastBulkPartial: (success, failed) =>
+      `สำเร็จ ${success} ใบ · ล้มเหลว ${failed} ใบ`,
+    toastBulkAllFailed: (n) => `ล้มเหลวทั้งหมด ${n} ใบ`,
+    toastSingleSuccess: (lotNo) => `สร้าง Stock Lot ${lotNo} สำเร็จ`,
+    toastSkipSuccess: (ticketNo) => `ข้ามการรับเข้าใบ ${ticketNo} แล้ว`,
+    toastUndoSkipSuccess: (ticketNo) =>
+      `นำใบ ${ticketNo} กลับมารอรับเข้าแล้ว`,
+    toastDismiss: "ปิด",
+    failureLine: (ticketNo, reason) => `${ticketNo} — ${reason}`,
   },
 };
 
@@ -437,6 +540,23 @@ const EN: StockDict = {
     clear: "Clear",
     prev: "← Prev",
     next: "Next →",
+    bulkCreateAll: "Receive all",
+    bulkCreateSelected: "Receive selected",
+    selectAll: "Select all",
+    deselectAll: "Clear selection",
+    skipIntake: "Skip stock intake",
+    confirmSkipIntake: "Confirm skip",
+    cancelSkipIntake: "Cancel",
+    confirmSkipIntakePrompt: (ticketNo) =>
+      `Skip stock intake for ticket ${ticketNo}?`,
+    confirmBulkCreatePrompt: (count) =>
+      `Create stock lots for ${count} purchase ticket(s)?`,
+    undoSkipIntake: "Re-queue for intake",
+    confirmUndoSkipPrompt: (ticketNo) =>
+      `Re-queue ticket ${ticketNo} for stock intake?`,
+    viewPending: "Pending",
+    viewSkipped: "Skipped",
+    submitting: "Saving…",
   },
   errors: {
     invalidJson: "Invalid request body",
@@ -470,6 +590,14 @@ const EN: StockDict = {
     rubberTypeInvalid: "Invalid rubber type",
     cannotAdjustDepleted:
       "This lot is depleted — cannot remove more (you may add weight back via ADJUST_IN).",
+    intakeViewInvalid: "Invalid intake view",
+    bulkTicketIdsEmpty: "Select at least one purchase ticket",
+    bulkTicketIdsTooMany: "You can select at most 50 tickets per request",
+    skipReasonTooShort: "Please provide a reason of at least 5 characters",
+    skipReasonTooLong: "Reason must not exceed 500 characters",
+    intakeAlreadyReceived: "This purchase ticket is already received into stock",
+    intakeAlreadySkipped: "This purchase ticket is already skipped",
+    intakeNotSkipped: "This purchase ticket is not in a skipped state",
   },
   empty: {
     list: "No stock lots yet",
@@ -478,6 +606,7 @@ const EN: StockDict = {
     fromPurchaseEmpty:
       "There are no APPROVED purchase tickets waiting to be received into stock.",
     fromPurchaseNoResults: (q) => `No tickets match "${q}"`,
+    skippedEmpty: "No skipped purchase tickets",
   },
   status: {
     ACTIVE: "Active",
@@ -492,6 +621,7 @@ const EN: StockDict = {
     PRODUCTION_OUT: "Production out",
     PRODUCTION_IN: "Production in",
     CANCEL_REVERSE: "Cancel reverse",
+    PURCHASE_RETURN_OUT: "Purchase return",
   },
   reason: {
     WATER_LOSS: "Water loss during storage",
@@ -517,6 +647,36 @@ const EN: StockDict = {
     paginationInfo: (from, to, total) => `Showing ${from}–${to} of ${total}`,
     detailComputedHint: "Server-computed values — display only",
     primaryBadge: "Primary",
+    pendingCount: (n) => `Pending (${n})`,
+    skippedCount: (n) => `Skipped (${n})`,
+    selectedCount: (n) => `${n} selected`,
+    skipReasonLabel: "Reason",
+    skipReasonPlaceholder: "Reason (at least 5 characters)",
+    skipReasonHelp: "Required for audit — explain why intake is skipped.",
+    skippedAt: (iso) => {
+      const d = new Date(iso);
+      return `Skipped on ${d.toLocaleString("en-GB", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+    },
+    skippedReason: (text) => `Reason: ${text}`,
+    intakeStatusReceived: "Received",
+    intakeStatusPending: "Pending",
+    intakeStatusSkipped: "Skipped",
+    toastBulkSuccess: (n) => `Created ${n} stock lot(s)`,
+    toastBulkPartial: (success, failed) =>
+      `${success} succeeded · ${failed} failed`,
+    toastBulkAllFailed: (n) => `All ${n} requests failed`,
+    toastSingleSuccess: (lotNo) => `Created stock lot ${lotNo}`,
+    toastSkipSuccess: (ticketNo) => `Skipped intake for ticket ${ticketNo}`,
+    toastUndoSkipSuccess: (ticketNo) =>
+      `Ticket ${ticketNo} re-queued for intake`,
+    toastDismiss: "Dismiss",
+    failureLine: (ticketNo, reason) => `${ticketNo} — ${reason}`,
   },
 };
 

@@ -116,6 +116,22 @@ export class PurchaseHasStockLotError extends Error {
   }
 }
 
+/**
+ * Cancel-after-skip can only act on tickets that have been APPROVED and
+ * had their stock intake explicitly SKIPPED. This guards against:
+ *   - cancelling a freshly approved ticket without going through the skip
+ *     UI (which would let users bypass the "tell me why we're skipping
+ *     this" prompt),
+ *   - cancelling a ticket whose stock has been received (PurchaseHasStockLotError
+ *     handles that case separately).
+ */
+export class PurchaseNotSkippedForCancelError extends Error {
+  constructor() {
+    super(t.errors.notSkippedForCancel);
+    this.name = "PurchaseNotSkippedForCancelError";
+  }
+}
+
 // ─── Audit helpers ───────────────────────────────────────────────────────────
 
 export type AuditMeta = {
@@ -758,6 +774,124 @@ export async function transitionPurchaseStatus(
         userAgent: meta?.userAgent ?? null,
       },
     });
+    return ticket;
+  });
+
+  return toPurchaseTicketDTO(updated);
+}
+
+// ─── Cancel after skip (Step 12 — Purchase Problem flow, Case A) ────────────
+//
+// This is the second authorised entry point into APPROVED → CANCELLED, kept
+// separate from `transitionPurchaseStatus` for three reasons:
+//
+//   1. Permission code: this gate uses `purchase.cancelAfterSkip` (granted
+//      to branch_manager / super_admin), distinct from `purchase.cancel`.
+//      A user who can cancel pre-approval drafts shouldn't automatically
+//      gain the right to cancel approved-then-skipped tickets.
+//
+//   2. Pre-condition: requires `stockIntakeStatus === "SKIPPED"`. Plain
+//      cancel of an APPROVED ticket is forbidden — operators must first
+//      go through the skip flow (which records the operational reason)
+//      before reaching the financial-cancel step (which records the
+//      cancellation reason). Two reasons captured separately = better
+//      audit + easier root-cause analysis.
+//
+//   3. Audit action: logs as `cancel_purchase_after_skip` so reports can
+//      tell apart "cancelled before approval" vs "cancelled after a skip".
+//
+// Same hard guards as the regular cancel:
+//   - reason required (trim ≥ 1 char; UI enforces ≥ 5 with translation),
+//   - no StockLot must exist (defence-in-depth — SKIPPED already implies
+//     no lot, but we recheck under FOR UPDATE).
+//
+// Concurrency: `SELECT … FOR UPDATE` on the ticket row blocks two
+// simultaneous cancel/un-skip races — whoever wins the lock wins the
+// transition; the loser sees a state-mismatch error after re-reading.
+
+export async function cancelPurchaseAfterSkip(
+  actor: AuthenticatedUser,
+  id: string,
+  cancelReason: string,
+  meta?: AuditMeta,
+): Promise<PurchaseTicketDTO> {
+  if (!actor.isSuperAdmin && !actor.permissions.has("purchase.cancelAfterSkip")) {
+    throw new StatusTransitionError("APPROVED", "CANCELLED");
+  }
+
+  if (!cancelReason || cancelReason.trim().length === 0) {
+    throw new CancelReasonRequiredError();
+  }
+  const trimmedReason = cancelReason.trim();
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "PurchaseTicket" WHERE id = ${id}::uuid FOR UPDATE
+    `;
+
+    const existing = await tx.purchaseTicket.findUnique({ where: { id } });
+    if (!existing) throw new PurchaseNotFoundError();
+    if (
+      !actor.isSuperAdmin &&
+      !actor.branchIds.includes(existing.branchId)
+    ) {
+      throw new PurchaseNotFoundError();
+    }
+
+    if (existing.status !== "APPROVED") {
+      throw new StatusTransitionError(
+        existing.status as PurchaseStatus,
+        "CANCELLED",
+      );
+    }
+    if (existing.stockIntakeStatus !== "SKIPPED") {
+      throw new PurchaseNotSkippedForCancelError();
+    }
+
+    // Defence-in-depth: SKIPPED implies no lot, but re-check under lock so
+    // we never silently cancel a ticket that quietly received stock via a
+    // backfill or admin tool between skip and cancel.
+    const lot = await tx.stockLot.findUnique({
+      where: { sourcePurchaseTicketId: existing.id },
+      select: { id: true },
+    });
+    if (lot) throw new PurchaseHasStockLotError();
+
+    const now = new Date();
+    const ticket = await tx.purchaseTicket.update({
+      where: { id },
+      data: {
+        status: "CANCELLED",
+        cancelledAt: now,
+        cancelledBy: { connect: { id: actor.id } },
+        cancelReason: trimmedReason,
+      },
+      include: PURCHASE_INCLUDE,
+    });
+
+    await tx.auditLog.create({
+      data: {
+        actorId: actor.id,
+        branchId: ticket.branchId,
+        entityType: "PurchaseTicket",
+        entityId: ticket.id,
+        action: "cancel_purchase_after_skip",
+        before: snapshot(existing),
+        after: snapshot(ticket),
+        metadata: buildAuditMetadata(meta, {
+          from: "APPROVED",
+          to: "CANCELLED",
+          stockIntakeStatusAtCancel: "SKIPPED",
+          stockIntakeSkippedAt:
+            existing.stockIntakeSkippedAt?.toISOString() ?? null,
+          stockIntakeSkipReason: existing.stockIntakeSkipReason,
+          cancelReason: trimmedReason,
+        }),
+        ipAddress: meta?.ipAddress ?? null,
+        userAgent: meta?.userAgent ?? null,
+      },
+    });
+
     return ticket;
   });
 

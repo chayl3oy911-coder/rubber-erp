@@ -213,6 +213,15 @@ export type EligiblePurchaseDTO = {
   pricePerKg: string;
   customer: { id: string; code: string; fullName: string } | null;
   createdAt: string;
+  // ─── Stock intake (Step 11) ──────────────────────────────────────────
+  // String-typed (rather than a strict union) because the DB column is
+  // `String`; the type guard `isStockIntakeStatus` is the gate when
+  // narrowing matters (mostly UI). The skipped-* fields are populated only
+  // when stockIntakeStatus is SKIPPED (mapper enforces the contract).
+  stockIntakeStatus: string;
+  stockIntakeReceivedAt: string | null;
+  stockIntakeSkippedAt: string | null;
+  stockIntakeSkipReason: string | null;
 };
 
 type EligiblePurchaseSource = Pick<
@@ -224,6 +233,10 @@ type EligiblePurchaseSource = Pick<
   | "totalAmount"
   | "pricePerKg"
   | "createdAt"
+  | "stockIntakeStatus"
+  | "stockIntakeReceivedAt"
+  | "stockIntakeSkippedAt"
+  | "stockIntakeSkipReason"
 > & {
   branch?: Pick<Branch, "id" | "code" | "name"> | null;
   customer?: Pick<Customer, "id" | "code" | "fullName"> | null;
@@ -250,5 +263,13 @@ export function toEligiblePurchaseDTO(
         }
       : null,
     createdAt: t.createdAt.toISOString(),
+    stockIntakeStatus: t.stockIntakeStatus,
+    stockIntakeReceivedAt: t.stockIntakeReceivedAt
+      ? t.stockIntakeReceivedAt.toISOString()
+      : null,
+    stockIntakeSkippedAt: t.stockIntakeSkippedAt
+      ? t.stockIntakeSkippedAt.toISOString()
+      : null,
+    stockIntakeSkipReason: t.stockIntakeSkipReason ?? null,
   };
 }

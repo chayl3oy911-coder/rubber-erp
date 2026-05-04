@@ -207,6 +207,53 @@ const PERMISSIONS: ReadonlyArray<PermissionSeed> = [
     description: "ดูประวัติ movement และ audit log ของ Stock อย่างละเอียด",
   },
   {
+    code: "stock.skipIntake",
+    module: "stock",
+    name: "ข้ามการรับเข้า Stock",
+    description:
+      "เปลี่ยนสถานะการรับเข้าของใบรับซื้อเป็น SKIPPED (ไม่นำเข้าระบบ Stock)",
+  },
+  {
+    code: "stock.undoSkipIntake",
+    module: "stock",
+    name: "นำใบที่ข้ามแล้วกลับมารอรับเข้า",
+    description:
+      "เปลี่ยน SKIPPED → PENDING เพื่อให้ใบรับซื้อกลับมารอรับเข้า Stock อีกครั้ง",
+  },
+  {
+    code: "purchase.cancelAfterSkip",
+    module: "purchase",
+    name: "ยกเลิกใบรับซื้อที่ข้ามแล้ว",
+    description:
+      "ยกเลิกใบรับซื้อที่อนุมัติแล้วและถูก SKIP โดยยังไม่มี StockLot — สำหรับกรณีสินค้ามีปัญหา/บันทึกผิด",
+  },
+  {
+    code: "purchase.return.read",
+    module: "purchase",
+    name: "ดูรายการคืนสินค้า",
+    description: "ดู list/detail ของ PurchaseReturn",
+  },
+  {
+    code: "purchase.return.create",
+    module: "purchase",
+    name: "สร้าง Draft คืนสินค้า",
+    description:
+      "สร้างเอกสารคืนสินค้า (DRAFT) จาก StockLot ที่รับเข้าจากใบรับซื้อแล้ว",
+  },
+  {
+    code: "purchase.return.confirm",
+    module: "purchase",
+    name: "ยืนยันการคืนสินค้า",
+    description:
+      "เปลี่ยน DRAFT → CONFIRMED จะสร้าง StockMovement (PURCHASE_RETURN_OUT) และลด remainingWeight/costAmount ของ StockLot",
+  },
+  {
+    code: "purchase.return.cancel",
+    module: "purchase",
+    name: "ยกเลิก Draft คืนสินค้า",
+    description: "ยกเลิกเอกสาร DRAFT ก่อน confirm — ไม่มีผลกับ Stock",
+  },
+  {
     code: "sales.read",
     module: "sales",
     name: "ดูใบขาย",
@@ -302,10 +349,17 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
     "purchase.update",
     "purchase.approve",
     "purchase.cancel",
+    "purchase.cancelAfterSkip",
+    "purchase.return.read",
+    "purchase.return.create",
+    "purchase.return.confirm",
+    "purchase.return.cancel",
     "stock.read",
     "stock.create",
     "stock.adjust",
     "stock.audit",
+    "stock.skipIntake",
+    "stock.undoSkipIntake",
     "sales.read",
     "sales.create",
     "sales.confirm",
@@ -340,6 +394,7 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
     "purchase.read",
     "purchase.create",
     "purchase.update",
+    "purchase.return.read",
     "stock.read",
     "stock.create",
   ],
@@ -353,6 +408,12 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
   // so they can confirm inventory consistency, but doesn't transact sales.
   warehouse_staff: [
     "purchase.read",
+    "purchase.return.read",
+    "purchase.return.create",
+    // Cancel rights cover ANY DRAFT in the user's branch (not just self-
+    // authored) — the warehouse team works as a pool and a draft might be
+    // started by a teammate before lunch and finished by another after.
+    "purchase.return.cancel",
     "stock.read",
     "stock.create",
     "stock.adjust",
@@ -387,6 +448,7 @@ const ROLE_PERMISSION_MAP: Readonly<Record<string, ReadonlyArray<string>>> = {
   // Read-only oversight role — sees everything but transacts nothing.
   viewer: [
     "purchase.read",
+    "purchase.return.read",
     "stock.read",
     "sales.read",
     "settings.receivingAccount.read",

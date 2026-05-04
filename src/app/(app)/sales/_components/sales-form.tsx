@@ -61,14 +61,26 @@ function round(n: number, dp: number): number {
   return Math.round(n * f) / f;
 }
 
-function lotToLine(lot: EligibleLotForSaleDTO): SalesLineFormValue {
+// Brief visual cue when a row is added or revisited via "อยู่ในบิลแล้ว".
+// Pure CSS class toggle so we don't pull in any animation library.
+function flashRow(el: HTMLElement): void {
+  el.classList.add("ring-2", "ring-emerald-500", "ring-offset-2");
+  window.setTimeout(() => {
+    el.classList.remove("ring-2", "ring-emerald-500", "ring-offset-2");
+  }, 800);
+}
+
+function lotToLine(
+  lot: EligibleLotForSaleDTO,
+  grossWeight: string,
+): SalesLineFormValue {
   return {
     stockLotId: lot.id,
     lotNo: lot.lotNo,
     rubberType: lot.rubberType,
     effectiveCostPerKg: lot.effectiveCostPerKg,
     remainingWeight: lot.remainingWeight,
-    grossWeight: lot.remainingWeight,
+    grossWeight,
   };
 }
 
@@ -103,54 +115,56 @@ export function SalesForm({
   // avoid round-tripping an obvious empty value.
   const buyerNameEmpty = buyerName.trim().length === 0;
 
-  const lineRefs = useRef<Map<string, HTMLInputElement | null>>(new Map());
+  // Refs to the rendered <li> for each line so the picker's "อยู่ในบิลแล้ว"
+  // affordance can scroll the operator straight to the relevant row (and
+  // briefly highlight it via the CSS `:target` pseudo-class on hash nav).
+  const lineRefs = useRef<Map<string, HTMLLIElement | null>>(new Map());
 
   const setLineRef = useCallback(
-    (stockLotId: string) => (el: HTMLInputElement | null) => {
+    (stockLotId: string) => (el: HTMLLIElement | null) => {
       if (el) lineRefs.current.set(stockLotId, el);
       else lineRefs.current.delete(stockLotId);
     },
     [],
   );
 
-  const selectedLotIds = useMemo(
-    () => new Set(lines.map((l) => l.stockLotId)),
+  // Map<stockLotId, grossWeight> — the picker uses this to (a) tag rows as
+  // "อยู่ในบิลแล้ว" and (b) compute the persistent post-sale remaining
+  // figure for those rows. Keeping the value as the raw user-typed string
+  // avoids re-stringifying on render and matches what the bill stores.
+  const selectedLines = useMemo(
+    () => new Map(lines.map((l) => [l.stockLotId, l.grossWeight])),
     [lines],
   );
 
-  const handleAdd = useCallback((lot: EligibleLotForSaleDTO) => {
-    setLines((prev) => {
-      if (prev.some((l) => l.stockLotId === lot.id)) return prev;
-      return [...prev, lotToLine(lot)];
-    });
-    // Defer focus to next tick so the row mounts first.
-    window.setTimeout(() => {
-      lineRefs.current.get(lot.id)?.focus();
-      lineRefs.current.get(lot.id)?.select?.();
-    }, 0);
-  }, []);
+  // Add a lot to the bill using the gross-weight string the picker has
+  // already validated (positive, ≤ remainingWeight). The grossWeight is
+  // locked in from this point — operators must remove and re-add to change.
+  const handleAdd = useCallback(
+    (lot: EligibleLotForSaleDTO, grossWeight: string) => {
+      setLines((prev) => {
+        if (prev.some((l) => l.stockLotId === lot.id)) return prev;
+        return [...prev, lotToLine(lot, grossWeight)];
+      });
+      // Scroll + flash the freshly-added row on the next tick so the
+      // operator sees the bill update.
+      window.setTimeout(() => {
+        const el = lineRefs.current.get(lot.id);
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          flashRow(el);
+        }
+      }, 0);
+    },
+    [],
+  );
 
   const handleRequestFocus = useCallback((stockLotId: string) => {
     const el = lineRefs.current.get(stockLotId);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "center" });
-      el.focus();
-      el.select?.();
+      flashRow(el);
     }
-  }, []);
-
-  const handleChangeGross = useCallback((index: number, next: string) => {
-    setLines((prev) =>
-      prev.map((l, i) => (i === index ? { ...l, grossWeight: next } : l)),
-    );
-  }, []);
-
-  const handleUseAll = useCallback((index: number) => {
-    setLines((prev) =>
-      prev.map((l, i) =>
-        i === index ? { ...l, grossWeight: l.remainingWeight } : l,
-      ),
-    );
   }, []);
 
   const handleRemove = useCallback((index: number) => {
@@ -203,28 +217,41 @@ export function SalesForm({
     [lines],
   );
 
+  // Partial preview: any field whose required inputs are missing stays null
+  // so the UI renders "—" for it instead of a misleading 0.00. As soon as a
+  // line is present, `grossWeightTotal` and `costAmount` become non-null —
+  // the operator wants to see those running totals before they finish typing
+  // DRC / price / tax. Each downstream field (DRC weight, gross amount,
+  // withholding, net, profit) lights up only when its inputs are valid.
   const preview = useMemo(() => {
-    if (
-      lines.length === 0 ||
-      !Number.isFinite(drcNum) ||
-      !Number.isFinite(priceNum) ||
-      grossTotal <= 0
-    ) {
-      return null;
-    }
-    const drcWeight = round((grossTotal * drcNum) / 100, 2);
-    const grossAmount = round(drcWeight * priceNum, 2);
+    if (lines.length === 0 || grossTotal <= 0) return null;
+
+    const hasDrc = Number.isFinite(drcNum);
+    const hasPrice = Number.isFinite(priceNum);
+
+    const drcWeight = hasDrc ? round((grossTotal * drcNum) / 100, 2) : null;
+    const grossAmount =
+      drcWeight !== null && hasPrice ? round(drcWeight * priceNum, 2) : null;
     const safeTax = Number.isFinite(taxNum) ? taxNum : 0;
-    const withholdingTaxAmount = round((grossAmount * safeTax) / 100, 2);
-    const netReceivable = round(grossAmount - withholdingTaxAmount, 2);
-    const profit = round(grossAmount - costTotal, 2);
+    const withholdingTaxAmount =
+      grossAmount !== null ? round((grossAmount * safeTax) / 100, 2) : null;
+    const netReceivable =
+      grossAmount !== null && withholdingTaxAmount !== null
+        ? round(grossAmount - withholdingTaxAmount, 2)
+        : null;
+    const costAmount = costTotal > 0 ? round(costTotal, 2) : null;
+    const profit =
+      grossAmount !== null && costAmount !== null
+        ? round(grossAmount - costAmount, 2)
+        : null;
+
     return {
       grossWeightTotal: grossTotal,
       drcWeight,
       grossAmount,
       withholdingTaxAmount,
       netReceivable,
-      costAmount: round(costTotal, 2),
+      costAmount,
       profit,
     };
   }, [lines.length, drcNum, priceNum, taxNum, grossTotal, costTotal]);
@@ -245,7 +272,7 @@ export function SalesForm({
         <div className="order-2 xl:order-1">
           <SalesLotPicker
             branchId={branchId || undefined}
-            selectedLotIds={selectedLotIds}
+            selectedLines={selectedLines}
             onAdd={handleAdd}
             onRequestFocus={handleRequestFocus}
           />
@@ -493,8 +520,6 @@ export function SalesForm({
                       index={idx}
                       line={line}
                       error={state.lineErrors?.[idx]}
-                      onChangeGross={(next) => handleChangeGross(idx, next)}
-                      onUseAll={() => handleUseAll(idx)}
                       onRemove={() => handleRemove(idx)}
                     />
                   ))}
@@ -532,7 +557,7 @@ export function SalesForm({
                     {t.preview.drcWeightTotal}
                   </dt>
                   <dd className="whitespace-nowrap text-right tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {preview
+                    {preview && preview.drcWeight !== null
                       ? `${formatNumber(preview.drcWeight, 2)} ${t.units.kg}`
                       : "—"}
                   </dd>
@@ -542,7 +567,7 @@ export function SalesForm({
                     {t.preview.grossAmount}
                   </dt>
                   <dd className="whitespace-nowrap text-right tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {preview
+                    {preview && preview.grossAmount !== null
                       ? `${formatNumber(preview.grossAmount, 2)} ${t.units.baht}`
                       : "—"}
                   </dd>
@@ -552,7 +577,7 @@ export function SalesForm({
                     {t.preview.withholdingTaxAmount}
                   </dt>
                   <dd className="whitespace-nowrap text-right tabular-nums text-zinc-700 dark:text-zinc-300">
-                    {preview
+                    {preview && preview.withholdingTaxAmount !== null
                       ? `− ${formatNumber(preview.withholdingTaxAmount, 2)} ${t.units.baht}`
                       : "—"}
                   </dd>
@@ -562,7 +587,7 @@ export function SalesForm({
                     {t.preview.netReceivableAmount}
                   </dt>
                   <dd className="whitespace-nowrap text-right tabular-nums text-emerald-700 dark:text-emerald-300">
-                    {preview
+                    {preview && preview.netReceivable !== null
                       ? `${formatNumber(preview.netReceivable, 2)} ${t.units.baht}`
                       : "—"}
                   </dd>
@@ -572,7 +597,7 @@ export function SalesForm({
                     {t.preview.costAmount}
                   </dt>
                   <dd className="whitespace-nowrap text-right tabular-nums text-zinc-700 dark:text-zinc-300">
-                    {preview
+                    {preview && preview.costAmount !== null
                       ? `${formatNumber(preview.costAmount, 2)} ${t.units.baht}`
                       : "—"}
                   </dd>
@@ -582,7 +607,7 @@ export function SalesForm({
                     {t.preview.profitAmount}
                   </dt>
                   <dd className="whitespace-nowrap text-right tabular-nums text-zinc-900 dark:text-zinc-50">
-                    {preview
+                    {preview && preview.profit !== null
                       ? `${formatNumber(preview.profit, 2)} ${t.units.baht}`
                       : "—"}
                   </dd>

@@ -37,9 +37,10 @@ model AppUser {
   userBranches UserBranch[]
   auditLogs    AuditLog[]   @relation("AuditActor")
 
-  purchaseTicketsCreated   PurchaseTicket[] @relation("PurchaseCreator")
-  purchaseTicketsApproved  PurchaseTicket[] @relation("PurchaseApprover")
-  purchaseTicketsCancelled PurchaseTicket[] @relation("PurchaseCanceller")
+  purchaseTicketsCreated         PurchaseTicket[] @relation("PurchaseCreator")
+  purchaseTicketsApproved        PurchaseTicket[] @relation("PurchaseApprover")
+  purchaseTicketsCancelled       PurchaseTicket[] @relation("PurchaseCanceller")
+  purchaseTicketsStockIntakeSkip PurchaseTicket[] @relation("PurchaseStockIntakeSkipper")
 
   stockLotsCreated      StockLot[]      @relation("StockLotCreator")
   stockMovementsCreated StockMovement[] @relation("StockMovementCreator")
@@ -49,6 +50,10 @@ model AppUser {
   salesOrdersCancelled SalesOrder[] @relation("SalesCanceller")
 
   receivingEntitiesCreated ReceivingEntity[] @relation("ReceivingEntityCreator")
+
+  purchaseReturnsCreated   PurchaseReturn[] @relation("PurchaseReturnCreator")
+  purchaseReturnsConfirmed PurchaseReturn[] @relation("PurchaseReturnConfirmer")
+  purchaseReturnsCancelled PurchaseReturn[] @relation("PurchaseReturnCanceller")
 }
 
 // ─── RBAC ────────────────────────────────────────────────────────────────────
@@ -130,6 +135,7 @@ model Branch {
   stockMovements    StockMovement[]
   salesOrders       SalesOrder[]
   receivingEntities ReceivingEntity[]
+  purchaseReturns   PurchaseReturn[]
   auditLogs         AuditLog[]
 }
 
@@ -261,19 +267,48 @@ model PurchaseTicket {
   updatedAt   DateTime @updatedAt
   createdById String   @db.Uuid
 
+  // ─── Stock intake (Step 11) ────────────────────────────────────────────────
+  // `stockIntakeStatus` is a separate axis from `status` (the purchase
+  // lifecycle): an APPROVED ticket is still PENDING intake until either a
+  // lot is created (RECEIVED) or the operator explicitly chooses not to
+  // ingest (SKIPPED). Decoupling these two axes lets us cleanly model the
+  // real-world cases: "approved but never delivered", "approved, delivered,
+  // not yet logged", "delivered and logged", and "approved + skipped".
+  // Filling these columns is service's job — never touch them directly.
+  stockIntakeStatus      String    @default("PENDING")
+  // "PENDING" | "RECEIVED" | "SKIPPED"
+  stockIntakeReceivedAt  DateTime?
+  stockIntakeSkippedAt   DateTime?
+  stockIntakeSkippedById String?   @db.Uuid
+  stockIntakeSkipReason  String?
+
+  // ─── Payment status (Step 11 — column-only forward-compat) ─────────────────
+  // No business logic reads/writes this in this step; it exists so that a
+  // future Payment feature can backfill values without an ALTER TABLE on a
+  // hot table. Keep DEFAULT 'UNPAID' so all existing rows stay consistent.
+  paymentStatus String @default("UNPAID")
+  // "UNPAID" | "PARTIAL" | "PAID"
+
   branch      Branch   @relation(fields: [branchId], references: [id])
   customer    Customer @relation(fields: [customerId], references: [id])
   createdBy   AppUser  @relation("PurchaseCreator", fields: [createdById], references: [id])
   approvedBy  AppUser? @relation("PurchaseApprover", fields: [approvedById], references: [id])
   cancelledBy AppUser? @relation("PurchaseCanceller", fields: [cancelledById], references: [id])
 
+  stockIntakeSkippedBy AppUser? @relation("PurchaseStockIntakeSkipper", fields: [stockIntakeSkippedById], references: [id])
+
   // 1 ticket → 1 lot. Reverse side; the unique constraint lives on `StockLot`.
   stockLot StockLot?
+
+  // 1 ticket → 0..N returns (DRAFT/CONFIRMED/CANCELLED).
+  purchaseReturns PurchaseReturn[]
 
   @@unique([branchId, ticketNo])
   @@index([branchId, status])
   @@index([branchId, createdAt])
   @@index([customerId])
+  @@index([branchId, stockIntakeStatus])
+  @@index([branchId, paymentStatus])
 }
 
 // ─── Stock ───────────────────────────────────────────────────────────────────
@@ -336,6 +371,7 @@ model StockLot {
 
   movements       StockMovement[]
   salesOrderLines SalesOrderLine[]
+  purchaseReturns PurchaseReturn[]
 
   @@unique([branchId, lotNo])
   // Hard guarantee that one PurchaseTicket cannot produce two lots, even on
@@ -382,9 +418,117 @@ model StockMovement {
   // SalesOrderLine.movementId, so they leave this null).
   salesOrderLine SalesOrderLine? @relation("SalesOrderLineMovement")
 
+  // 1:1 inverse — a PURCHASE_RETURN_OUT movement belongs to exactly one
+  // CONFIRMED PurchaseReturn. DRAFT / CANCELLED returns leave this null.
+  purchaseReturn PurchaseReturn? @relation("PurchaseReturnMovement")
+
   @@index([stockLotId, createdAt])
   @@index([branchId, movementType])
   @@index([referenceType, referenceId])
+}
+
+// ─── Purchase Return (Step 12) ──────────────────────────────────────────────
+//
+// Reverse-flow for the case where a purchase has already been received into
+// stock but the goods turn out to have a problem (QC error, supplier
+// returns, wrong entry, etc.). We record an explicit `PurchaseReturn`
+// document instead of mutating the original purchase / stock lot in place,
+// because:
+//
+//   1. The `PurchaseTicket` and `StockLot` rows are immutable after intake
+//      by design (audit-quality history). Returning is a *new* event, not
+//      an edit to the past.
+//   2. Returns can be partial (return 200 of 1000 kg) and there can be many
+//      against a single lot over time — a separate row per return is the
+//      cleanest way to model this without abusing adjustment notes.
+//   3. The Payment / Refund feature (a future step) needs a stable id to
+//      reference the returned amount.
+//
+// Workflow:
+//
+//   DRAFT  ─ confirm ─▶ CONFIRMED   (creates a PURCHASE_RETURN_OUT movement,
+//     │                              shrinks lot.remainingWeight + costAmount,
+//     │                              recomputes effectiveCostPerKg)
+//     │
+//     └── cancel ───▶ CANCELLED      (no stock side-effect; reason recorded)
+//
+// CONFIRMED is FINAL — there is no "un-confirm". Mistakes are corrected by
+// an opposite ADJUST_IN (with reason) or a future counter-flow; this keeps
+// the audit chain monotonic.
+//
+// Cost semantics (parallel to SALES_OUT, NOT to ADJUST_OUT):
+//   returnCostAmount      = effectiveCostPerKg × returnWeight  (HALF_UP, 2dp)
+//   lot.costAmount       -= returnCostAmount  (clamped ≥ 0)
+//   lot.remainingWeight  -= returnWeight
+//   lot.effectiveCostPerKg = lot.costAmount / lot.remainingWeight, OR
+//                            FROZEN at its previous value when remainingWeight
+//                            reaches 0 (so the historical rate is preserved).
+
+model PurchaseReturn {
+  id               String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  branchId         String @db.Uuid
+  purchaseTicketId String @db.Uuid
+  stockLotId       String @db.Uuid
+
+  returnNo String // e.g. "PRT000001" — branch-scoped, auto-generated
+  status   String @default("DRAFT") // DRAFT | CONFIRMED | CANCELLED
+
+  // Reason is required; "OTHER" requires a non-empty `returnReasonNote`
+  // (validated in the service layer — DB stays permissive).
+  returnReasonType String // PRODUCT_ISSUE | QC_ERROR | WRONG_ENTRY | SUPPLIER_RETURN | OTHER
+  returnReasonNote String?
+
+  // Quantity & cost
+  returnWeight     Decimal @db.Decimal(12, 2)
+  // Computed at confirm time from the FRESH lot.effectiveCostPerKg under
+  // FOR UPDATE. While DRAFT this column holds a preview value (UI label
+  // makes that clear); confirm overwrites it with the authoritative number
+  // before flipping status to CONFIRMED.
+  returnCostAmount Decimal @default(0) @db.Decimal(14, 2)
+
+  // Snapshots — frozen at create-time so the return record is readable
+  // even if the supplier or lot is later renamed/deactivated.
+  customerCodeSnapshot String?
+  customerNameSnapshot String?
+  ticketNoSnapshot     String?
+  lotNoSnapshot        String?
+
+  // 1:1 link to the StockMovement created at confirm. Null while DRAFT
+  // and CANCELLED (cancelled drafts never produced a movement).
+  stockMovementId String? @unique @db.Uuid
+
+  // Forward-compat for Payment/Refund — no logic in this step. The default
+  // is PENDING; on confirm the service flips it to NOT_REQUIRED when the
+  // ticket's paymentStatus is UNPAID (no money has changed hands yet).
+  refundStatus   String  @default("PENDING") // PENDING | NOT_REQUIRED | REFUNDED | CREDITED
+  refundedAmount Decimal @default(0) @db.Decimal(14, 2)
+
+  // Workflow
+  createdById   String    @db.Uuid
+  createdAt     DateTime  @default(now())
+  confirmedById String?   @db.Uuid
+  confirmedAt   DateTime?
+  cancelledById String?   @db.Uuid
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  isActive  Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  branch         Branch         @relation(fields: [branchId], references: [id])
+  purchaseTicket PurchaseTicket @relation(fields: [purchaseTicketId], references: [id])
+  stockLot       StockLot       @relation(fields: [stockLotId], references: [id])
+  stockMovement  StockMovement? @relation("PurchaseReturnMovement", fields: [stockMovementId], references: [id])
+
+  createdBy   AppUser  @relation("PurchaseReturnCreator", fields: [createdById], references: [id])
+  confirmedBy AppUser? @relation("PurchaseReturnConfirmer", fields: [confirmedById], references: [id])
+  cancelledBy AppUser? @relation("PurchaseReturnCanceller", fields: [cancelledById], references: [id])
+
+  @@unique([branchId, returnNo])
+  @@index([branchId, status])
+  @@index([purchaseTicketId])
+  @@index([stockLotId])
+  @@index([branchId, createdAt])
 }
 
 // ─── Sales (Factory sales + DRC, multi-lot) ─────────────────────────────────

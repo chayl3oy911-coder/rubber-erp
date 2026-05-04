@@ -6,12 +6,17 @@ import {
   STOCK_PAGE_SIZE_DEFAULT,
   listEligiblePurchasesQuerySchema,
 } from "@/modules/stock/schemas";
-import { listEligiblePurchases } from "@/modules/stock/service";
+import {
+  countEligiblePurchasesByView,
+  listEligiblePurchases,
+} from "@/modules/stock/service";
+import { isStockIntakeView } from "@/modules/stock/types";
 import { hasPermission, requirePermission } from "@/shared/auth/dal";
 
-import { EligiblePurchasesList } from "../_components/eligible-purchases-list";
 import { StockPagination } from "../_components/pagination";
 import { StockSearch } from "../_components/stock-search";
+
+import { EligiblePurchasesClient } from "./_components/eligible-purchases-client";
 
 const t = stockT();
 
@@ -42,26 +47,25 @@ function buildBaseQuery(sp: SearchParamsRecord): URLSearchParams {
   return params;
 }
 
-const ERROR_MAP: Record<string, string> = {
-  notFound: "ไม่พบใบรับซื้อ หรือใบรับซื้อไม่อยู่ในสาขาที่เข้าถึงได้",
-  notApproved: "ใบรับซื้อต้องอยู่ในสถานะ APPROVED ก่อนรับเข้า Stock",
-  inactive: "ใบรับซื้อนี้ถูกปิดใช้งาน",
-  duplicate: "ใบรับซื้อนี้มี Stock Lot อยู่แล้ว",
-  autoGen: "ระบบสร้างเลข Lot ไม่สำเร็จ กรุณาลองอีกครั้ง",
-};
-
 export default async function StockFromPurchasePage({
   searchParams,
 }: {
   searchParams: Promise<SearchParamsRecord>;
 }) {
-  // Permission: stock.create — same gate the action enforces.
-  const me = await requirePermission("stock.create");
+  // The page-level gate is `stock.read` so SKIPPED-tab viewers without
+  // create rights can still see the list. Per-action permissions are
+  // computed below and forwarded into the client component, which
+  // disables/hides the relevant buttons.
+  const me = await requirePermission("stock.read");
   const sp = await searchParams;
+
+  const rawView = pickString(sp, "view");
+  const view = rawView && isStockIntakeView(rawView) ? rawView : "pending";
 
   const parsed = listEligiblePurchasesQuerySchema.safeParse({
     q: pickString(sp, "q"),
     branchId: pickString(sp, "branchId"),
+    view,
     page: pickString(sp, "page"),
     pageSize: pickString(sp, "pageSize"),
   });
@@ -71,17 +75,30 @@ export default async function StockFromPurchasePage({
     : {
         q: undefined,
         branchId: undefined,
+        view,
         page: 1,
         pageSize: STOCK_PAGE_SIZE_DEFAULT,
       };
 
-  const result = await listEligiblePurchases(me, query);
+  const [result, counts] = await Promise.all([
+    listEligiblePurchases(me, query),
+    countEligiblePurchasesByView(me),
+  ]);
 
   const branches = await listBranches(me);
   const showBranchControls = me.isSuperAdmin || branches.length > 1;
 
-  const errorKey = pickString(sp, "error");
-  const errorMessage = errorKey ? ERROR_MAP[errorKey] : null;
+  // Forward to the client only the params the toolbar needs to keep on
+  // tab switches — `view` and `page` are the ones the toolbar resets.
+  const baseQueryForClient: Record<string, string> = {};
+  for (const [k, v] of Object.entries(sp)) {
+    if (k === "view" || k === "page") continue;
+    if (Array.isArray(v)) {
+      if (v[0]) baseQueryForClient[k] = v[0];
+    } else if (v) {
+      baseQueryForClient[k] = v;
+    }
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -102,12 +119,6 @@ export default async function StockFromPurchasePage({
         </div>
       </header>
 
-      {errorMessage ? (
-        <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
-          {errorMessage}
-        </p>
-      ) : null}
-
       <p className="text-xs text-zinc-500 dark:text-zinc-400">
         {t.hints.fromPurchaseExplain}
       </p>
@@ -127,6 +138,7 @@ export default async function StockFromPurchasePage({
             const params = new URLSearchParams();
             const q = query.q;
             if (q) params.set("q", q);
+            if (view !== "pending") params.set("view", view);
             params.set("branchId", b.id);
             const isActive = query.branchId === b.id;
             return (
@@ -146,11 +158,30 @@ export default async function StockFromPurchasePage({
         </div>
       ) : null}
 
-      <EligiblePurchasesList
-        tickets={result.tickets}
-        searchTerm={query.q}
+      {/*
+        `key={view}` forces this client component to REMOUNT when the
+        user switches between the PENDING and SKIPPED tabs. Without it,
+        React would reconcile the same instance and `useState(initialTickets)`
+        would keep the old tab's rows in local state — so the SKIPPED tab
+        would render the (stale) pending list. The remount means
+        `useState` re-initialises from the freshly server-rendered props
+        (which are themselves kept fresh by the `router.refresh()` calls
+        the client component fires after every successful mutation).
+      */}
+      <EligiblePurchasesClient
+        key={view}
+        initialTickets={result.tickets}
+        view={view}
+        pendingCount={counts.pending}
+        skippedCount={counts.skipped}
         showBranchColumn={showBranchControls}
         canCreate={hasPermission(me, "stock.create")}
+        canSkip={hasPermission(me, "stock.skipIntake")}
+        canUndoSkip={hasPermission(me, "stock.undoSkipIntake")}
+        canCancelAfterSkip={hasPermission(me, "purchase.cancelAfterSkip")}
+        baseHref="/stock/from-purchase"
+        baseQuery={baseQueryForClient}
+        searchTerm={query.q}
       />
 
       <StockPagination

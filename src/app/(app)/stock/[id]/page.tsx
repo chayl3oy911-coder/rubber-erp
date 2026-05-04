@@ -92,7 +92,17 @@ export default async function StockDetailPage({ params, searchParams }: Props) {
   if (!movements) notFound();
 
   const canAdjust = hasPermission(me, "stock.adjust");
+  const canCreateReturn = hasPermission(me, "purchase.return.create");
   const isDepleted = lot.status === "DEPLETED";
+
+  // Show "คืนสินค้าให้ผู้ขาย" only for an ACTIVE lot that came from a
+  // purchase ticket and still has weight to return.
+  const canShowReturnEntry =
+    canCreateReturn &&
+    lot.isActive &&
+    lot.status === "ACTIVE" &&
+    Number(lot.remainingWeight) > 0 &&
+    !!lot.sourceTicket;
 
   // Build a baseQuery for movement pagination that strips the page so
   // StockPagination can re-set it. The detail route only paginates one
@@ -131,6 +141,14 @@ export default async function StockDetailPage({ params, searchParams }: Props) {
               className={ghostLinkClass}
             >
               {t.actions.viewSourceTicket}
+            </Link>
+          ) : null}
+          {canShowReturnEntry ? (
+            <Link
+              href={`/purchase-returns/new?lotId=${lot.id}`}
+              className="inline-flex h-9 shrink-0 items-center justify-center whitespace-nowrap rounded-lg bg-orange-600 px-3 text-sm font-medium text-white hover:bg-orange-500"
+            >
+              คืนสินค้าให้ผู้ขาย
             </Link>
           ) : null}
         </div>
