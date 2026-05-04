@@ -12,7 +12,7 @@ import { hasPermission, requirePermission } from "@/shared/auth/dal";
 
 import { ListFilters } from "./_components/list-filters";
 import { Pagination } from "./_components/pagination";
-import { PurchaseList } from "./_components/purchase-list";
+import { PurchaseListClient } from "./_components/purchase-list-client";
 import { PurchaseSearch } from "./_components/purchase-search";
 
 const t = purchaseT();
@@ -104,6 +104,15 @@ export default async function PurchasesPage({
   });
 
   const canCreate = hasPermission(me, "purchase.create");
+  // Row-level transition permissions are computed once on the server
+  // and passed down — the client component never re-checks the role
+  // table; the API enforces the same permissions on every request,
+  // so the buttons are a UX hint, not a security boundary.
+  const rowPerms = {
+    canUpdate: hasPermission(me, "purchase.update"),
+    canApprove: hasPermission(me, "purchase.approve"),
+    canCancel: hasPermission(me, "purchase.cancel"),
+  };
   const branches = await listBranches(me);
   const showBranchControls = me.isSuperAdmin || branches.length > 1;
 
@@ -149,10 +158,11 @@ export default async function PurchasesPage({
         dateTo={query.dateTo}
       />
 
-      <PurchaseList
-        purchases={result.purchases}
+      <PurchaseListClient
+        initialPurchases={result.purchases}
         searchTerm={query.q}
         showBranchColumn={showBranchControls}
+        perms={rowPerms}
       />
 
       <Pagination

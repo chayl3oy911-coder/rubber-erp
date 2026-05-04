@@ -170,6 +170,15 @@ type PurchaseDict = {
     paginationInfo: (from: number, to: number, total: number) => string;
     detailComputedHint: string;
     documentReadyHint: string;
+    /** Confirm prompt for the "Approve" button in the list. */
+    confirmApprovePrompt: (ticketNo: string) => string;
+    /** Toast titles for list-level transitions. */
+    toastSubmitQcSuccess: (ticketNo: string) => string;
+    toastSubmitApprovalSuccess: (ticketNo: string) => string;
+    toastApproveSuccess: (ticketNo: string) => string;
+    toastCancelSuccess: (ticketNo: string) => string;
+    toastTransitionFailed: string;
+    toastValidationFailed: string;
   };
 };
 
@@ -341,6 +350,15 @@ const TH: PurchaseDict = {
     detailComputedHint: "ค่าที่คำนวณโดยระบบ — UI ใช้แสดงเท่านั้น",
     documentReadyHint:
       "ข้อมูลใบนี้พร้อมพิมพ์ใบรับซื้อในอนาคต (ระบบเอกสาร/PDF จะมาภายหลัง)",
+    confirmApprovePrompt: (ticketNo) =>
+      `ยืนยันอนุมัติใบ ${ticketNo}? เมื่ออนุมัติแล้วจะไม่สามารถแก้ไขข้อมูลหลักได้`,
+    toastSubmitQcSuccess: (ticketNo) => `ส่งตรวจ QC ใบ ${ticketNo} เรียบร้อย`,
+    toastSubmitApprovalSuccess: (ticketNo) =>
+      `ส่งใบ ${ticketNo} เพื่ออนุมัติเรียบร้อย`,
+    toastApproveSuccess: (ticketNo) => `อนุมัติใบ ${ticketNo} เรียบร้อย`,
+    toastCancelSuccess: (ticketNo) => `ยกเลิกใบ ${ticketNo} เรียบร้อย`,
+    toastTransitionFailed: "ไม่สามารถดำเนินการได้",
+    toastValidationFailed: "ข้อมูลไม่ถูกต้อง",
   },
 };
 
@@ -512,6 +530,15 @@ const EN: PurchaseDict = {
     detailComputedHint: "Server-computed values — display only",
     documentReadyHint:
       "This ticket's data is ready for future receipt printing (PDF/document module ships later)",
+    confirmApprovePrompt: (ticketNo) =>
+      `Approve ticket ${ticketNo}? Once approved, core fields can no longer be edited.`,
+    toastSubmitQcSuccess: (ticketNo) => `Sent ticket ${ticketNo} to QC`,
+    toastSubmitApprovalSuccess: (ticketNo) =>
+      `Sent ticket ${ticketNo} for approval`,
+    toastApproveSuccess: (ticketNo) => `Ticket ${ticketNo} approved`,
+    toastCancelSuccess: (ticketNo) => `Ticket ${ticketNo} cancelled`,
+    toastTransitionFailed: "Action failed",
+    toastValidationFailed: "Validation failed",
   },
 };
 
