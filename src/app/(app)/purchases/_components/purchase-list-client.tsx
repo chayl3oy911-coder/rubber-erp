@@ -10,6 +10,7 @@ import type { PurchaseStatus } from "@/modules/purchase/status";
 import { Card, CardContent } from "@/shared/ui";
 import { useToast } from "@/shared/ui/toast";
 
+import { CancelPurchaseDialog } from "./cancel-purchase-dialog";
 import {
   PurchaseRowActions,
   type RowPermissions,
@@ -129,38 +130,50 @@ export function PurchaseListClient({
 }: Props) {
   const [rows, setRows] = useState<PurchaseTicketDTO[]>(initialPurchases);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Holds the ticket whose Cancel modal is currently open. `null`
+  // means the modal is closed. Storing the whole DTO (instead of just
+  // an id) lets the dialog show the ticket number without an extra
+  // lookup, and lets the modal survive an in-flight request even if
+  // the row briefly re-renders.
+  const [cancelDialogTicket, setCancelDialogTicket] =
+    useState<PurchaseTicketDTO | null>(null);
   const { show } = useToast();
 
   /**
-   * Performs a transition and updates only the affected row.
+   * Low-level transition runner — performs the network call, applies
+   * the row update from the API response, and dispatches a toast.
    *
-   * We accept `requireConfirm` rather than reading it from the target
-   * so the row component stays the single source of truth for what
-   * counts as a "destructive enough" action — currently only Approve.
-   * Cancel deliberately skips a confirm dialog: per requirement, only
-   * Approve gets one, and the row Cancel button does not appear on
-   * APPROVED rows (which would otherwise need an explicit reason).
+   * Returns `true` when the transition succeeded so callers (notably
+   * the cancel dialog) can decide whether to close themselves. Errors
+   * resolve with `false`; the toast already explains what went wrong.
+   *
+   * Why this is decoupled from the row buttons: cancel runs through
+   * the modal first to collect a reason, then calls back into here.
+   * Keeping the network logic in one place means the row buttons,
+   * the modal, and any future caller (keyboard shortcut, bulk action)
+   * all get identical behaviour.
    */
-  const handleTransition = useCallback(
+  const runTransition = useCallback(
     async (
       ticket: PurchaseTicketDTO,
-      input: { target: PurchaseStatus; requireConfirm: boolean },
-    ) => {
-      if (busyId) return;
-
-      if (input.requireConfirm) {
-        const ok = window.confirm(t.misc.confirmApprovePrompt(ticket.ticketNo));
-        if (!ok) return;
-      }
+      target: PurchaseStatus,
+      cancelReason?: string,
+    ): Promise<boolean> => {
+      if (busyId) return false;
 
       setBusyId(ticket.id);
       try {
+        const body: { status: PurchaseStatus; cancelReason?: string } = {
+          status: target,
+        };
+        if (cancelReason !== undefined) body.cancelReason = cancelReason;
+
         const res = await fetch(
           `/api/purchase-tickets/${ticket.id}/transition`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ status: input.target }),
+            body: JSON.stringify(body),
           },
         );
 
@@ -174,7 +187,7 @@ export function PurchaseListClient({
         if (!res.ok) {
           const { title, description } = describeApiError(payload);
           show({ variant: "error", title, description });
-          return;
+          return false;
         }
 
         // Success path: server returns `{ ticket: PurchaseTicketDTO }`
@@ -196,8 +209,9 @@ export function PurchaseListClient({
 
         show({
           variant: "success",
-          title: successToast(input.target, ticket.ticketNo),
+          title: successToast(target, ticket.ticketNo),
         });
+        return true;
       } catch (err) {
         // Network errors land here — surface a generic message rather
         // than the raw exception, which is rarely user-friendly.
@@ -206,11 +220,63 @@ export function PurchaseListClient({
           title: t.misc.toastTransitionFailed,
           description: err instanceof Error ? err.message : undefined,
         });
+        return false;
       } finally {
         setBusyId(null);
       }
     },
     [busyId, show],
+  );
+
+  /**
+   * Row-button entry point. Routes destructive Cancel through the
+   * modal dialog (where a reason is collected) and other transitions
+   * straight through `runTransition`.
+   *
+   * `requireConfirm` is honoured here for the Approve action (the
+   * one transition flagged as needing an extra `window.confirm` per
+   * spec — see `purchase-row-actions.tsx`).
+   */
+  const handleTransition = useCallback(
+    (
+      ticket: PurchaseTicketDTO,
+      input: { target: PurchaseStatus; requireConfirm: boolean },
+    ) => {
+      if (busyId) return;
+
+      if (input.target === "CANCELLED") {
+        // Open the modal instead of firing immediately. The modal
+        // will call back into `runTransition` once the user provides
+        // a valid reason.
+        setCancelDialogTicket(ticket);
+        return;
+      }
+
+      if (input.requireConfirm) {
+        const ok = window.confirm(t.misc.confirmApprovePrompt(ticket.ticketNo));
+        if (!ok) return;
+      }
+
+      void runTransition(ticket, input.target);
+    },
+    [busyId, runTransition],
+  );
+
+  const handleCancelDialogClose = useCallback(() => {
+    setCancelDialogTicket(null);
+  }, []);
+
+  const handleCancelDialogConfirm = useCallback(
+    async (reason: string) => {
+      const ticket = cancelDialogTicket;
+      if (!ticket) return;
+      const ok = await runTransition(ticket, "CANCELLED", reason);
+      // Close on success only. On failure we keep the modal open so
+      // the user can retry without having to retype the reason —
+      // the toast already explains what went wrong.
+      if (ok) setCancelDialogTicket(null);
+    },
+    [cancelDialogTicket, runTransition],
   );
 
   if (rows.length === 0) {
@@ -436,6 +502,25 @@ export function PurchaseListClient({
           </table>
         </div>
       </div>
+
+      {/*
+        Cancel modal — rendered at the root of the fragment so its
+        fixed-positioned backdrop overlays the whole page (table or
+        cards). `key={ticketId}` remounts the dialog per open so the
+        textarea state always starts empty without us having to
+        manually reset it on every close. `isBusy` is wired to the
+        same `busyId` the rows watch, which prevents the user from
+        closing the dialog (or backdrop) mid-request.
+      */}
+      {cancelDialogTicket ? (
+        <CancelPurchaseDialog
+          key={cancelDialogTicket.id}
+          ticketNo={cancelDialogTicket.ticketNo}
+          isBusy={busyId === cancelDialogTicket.id}
+          onConfirm={handleCancelDialogConfirm}
+          onClose={handleCancelDialogClose}
+        />
+      ) : null}
     </>
   );
 }

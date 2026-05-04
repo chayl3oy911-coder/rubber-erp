@@ -179,6 +179,15 @@ type PurchaseDict = {
     toastCancelSuccess: (ticketNo: string) => string;
     toastTransitionFailed: string;
     toastValidationFailed: string;
+    /** Cancel dialog (list page) — strings for the modal flow. */
+    cancelDialogTitle: string;
+    cancelDialogPrompt: (ticketNo: string) => string;
+    cancelDialogReasonLabel: string;
+    cancelDialogReasonPlaceholder: string;
+    cancelDialogReasonHint: string;
+    cancelDialogReasonTooShort: string;
+    cancelDialogConfirm: string;
+    cancelDialogClose: string;
   };
 };
 
@@ -359,6 +368,15 @@ const TH: PurchaseDict = {
     toastCancelSuccess: (ticketNo) => `ยกเลิกใบ ${ticketNo} เรียบร้อย`,
     toastTransitionFailed: "ไม่สามารถดำเนินการได้",
     toastValidationFailed: "ข้อมูลไม่ถูกต้อง",
+    cancelDialogTitle: "ยืนยันการยกเลิกใบรับซื้อ",
+    cancelDialogPrompt: (ticketNo) =>
+      `คุณต้องการยกเลิกใบ ${ticketNo} ใช่หรือไม่`,
+    cancelDialogReasonLabel: "เหตุผลการยกเลิก",
+    cancelDialogReasonPlaceholder: "กรอกเหตุผลการยกเลิก",
+    cancelDialogReasonHint: "อย่างน้อย 5 ตัวอักษร สูงสุด 500 ตัวอักษร",
+    cancelDialogReasonTooShort: "กรอกเหตุผลอย่างน้อย 5 ตัวอักษร",
+    cancelDialogConfirm: "ยืนยันยกเลิก",
+    cancelDialogClose: "ยกเลิก",
   },
 };
 
@@ -539,6 +557,14 @@ const EN: PurchaseDict = {
     toastCancelSuccess: (ticketNo) => `Ticket ${ticketNo} cancelled`,
     toastTransitionFailed: "Action failed",
     toastValidationFailed: "Validation failed",
+    cancelDialogTitle: "Confirm purchase ticket cancellation",
+    cancelDialogPrompt: (ticketNo) => `Cancel ticket ${ticketNo}?`,
+    cancelDialogReasonLabel: "Cancellation reason",
+    cancelDialogReasonPlaceholder: "Enter the reason for cancelling this ticket",
+    cancelDialogReasonHint: "At least 5 characters, up to 500",
+    cancelDialogReasonTooShort: "Reason must be at least 5 characters",
+    cancelDialogConfirm: "Confirm cancellation",
+    cancelDialogClose: "Close",
   },
 };
 
